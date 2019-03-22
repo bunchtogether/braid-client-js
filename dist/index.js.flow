@@ -54,7 +54,7 @@ class Client extends EventEmitter {
 
     ws.onclose = (event) => {
       const { wasClean, reason, code } = event;
-      console.log(`${wasClean ? 'Cleanly' : 'Uncleanly'} closed websocket connection to ${this.address} with code ${code}: ${reason}`);
+      console.log(`${wasClean ? 'Cleanly' : 'Uncleanly'} closed websocket connection to ${this.address} with code ${code}${reason ? `: ${reason}` : ''}`);
       delete this.ws;
       this.emit('close', code, reason);
     };
@@ -192,7 +192,7 @@ class Client extends EventEmitter {
       };
       handlers.set(callback, [setHandler, deleteHandler]);
       this.data.on('set', setHandler);
-      this.data.on('set', deleteHandler);
+      this.data.on('delete', deleteHandler);
     }
   }
 
