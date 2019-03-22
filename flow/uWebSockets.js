@@ -122,34 +122,34 @@ interface AppOptions {
     dh_params_file_name?: RecognizedString;
 }
 
-/** TemplatedApp is either an SSL or non-SSL app. */
-interface TemplatedApp {
+/** UWSTemplatedApp is either an SSL or non-SSL app. */
+interface UWSTemplatedApp {
     /** Listens to hostname & port. Callback hands either false or a listen socket. */
-    listen(host: RecognizedString, port: number, cb: (listenSocket: us_listen_socket) => void): TemplatedApp;
+    listen(host: RecognizedString, port: number, cb: (listenSocket: us_listen_socket) => void): UWSTemplatedApp;
     /** Listens to port. Callback hands either false or a listen socket. */
-    listen(port: number, cb: (listenSocket: any) => void): TemplatedApp;
+    listen(port: number, cb: (listenSocket: any) => void): UWSTemplatedApp;
     /** Registers an HTTP GET handler matching specified URL pattern. */
-    get(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : TemplatedApp;
+    get(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : UWSTemplatedApp;
     /** Registers an HTTP POST handler matching specified URL pattern. */
-    post(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : TemplatedApp;
+    post(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : UWSTemplatedApp;
     /** Registers an HTTP OPTIONS handler matching specified URL pattern. */
-    options(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : TemplatedApp;
+    options(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : UWSTemplatedApp;
     /** Registers an HTTP DELETE handler matching specified URL pattern. */
-    del(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : TemplatedApp;
+    del(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : UWSTemplatedApp;
     /** Registers an HTTP PATCH handler matching specified URL pattern. */
-    patch(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : TemplatedApp;
+    patch(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : UWSTemplatedApp;
     /** Registers an HTTP PUT handler matching specified URL pattern. */
-    put(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : TemplatedApp;
+    put(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : UWSTemplatedApp;
     /** Registers an HTTP HEAD handler matching specified URL pattern. */
-    head(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : TemplatedApp;
+    head(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : UWSTemplatedApp;
     /** Registers an HTTP CONNECT handler matching specified URL pattern. */
-    connect(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : TemplatedApp;
+    connect(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : UWSTemplatedApp;
     /** Registers an HTTP TRACE handler matching specified URL pattern. */
-    trace(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : TemplatedApp;
+    trace(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : UWSTemplatedApp;
     /** Registers an HTTP handler matching specified URL pattern on any HTTP method. */
-    any(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : TemplatedApp;
+    any(pattern: RecognizedString, handler: (res: HttpResponse, req: HttpRequest) => void) : UWSTemplatedApp;
     /** Registers a handler matching specified URL pattern where UWSWebSocket upgrade requests are caught. */
-    ws(pattern: RecognizedString, behavior: UWSWebSocketBehavior) : TemplatedApp;
+    ws(pattern: RecognizedString, behavior: UWSWebSocketBehavior) : UWSTemplatedApp;
 
     forcefully_free(): void;
 }
@@ -160,8 +160,8 @@ type CompressOption = 0|1|2;
 
 
 declare module 'uWebSockets.js' {
-  declare export function App(options: AppOptions): TemplatedApp;
-  declare export function SSLApp(options: AppOptions): TemplatedApp; 
+  declare export function App(options: AppOptions): UWSTemplatedApp;
+  declare export function SSLApp(options: AppOptions): UWSTemplatedApp; 
   declare export function us_listen_socket_close(listenSocket: us_listen_socket): void;
   declare type CompressOptions = {
     /** No compression (always a good idea) */

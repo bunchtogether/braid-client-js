@@ -33,17 +33,19 @@ class SubscribeError extends Error {
 }
 
 class Client extends EventEmitter {
-  constructor(address:string, credentials?:Object) {
+  constructor() {
     super();
     this.data = new ObservedRemoveMap([], { bufferPublishing: 0 });
-    this.address = address;
-    this.credentials = credentials;
     this.timeoutDuration = 5000;
-    this.subscriptions = new Map();
+    this.subscriptions = new Set();
+    this.subscriptionHandlers = new Map();
   }
 
-  async open() {
-    const ws = new WebSocket(this.address);
+  async open(address:string, credentials?:Object = {}) {
+    this.address = address;
+    this.credentials = credentials;
+
+    const ws = new WebSocket(address);
 
     ws.onopen = () => {
       this.emit('open');
@@ -85,8 +87,9 @@ class Client extends EventEmitter {
       this.once('error', onError);
       this.once('open', onOpen);
     });
-    if (this.credentials) {
-      await this.sendCredentials(this.credentials);
+
+    if (credentials) {
+      await this.sendCredentials(credentials);
     }
   }
 
@@ -133,16 +136,14 @@ class Client extends EventEmitter {
     await responsePromise;
   }
 
-  async subscribe(key: string, callback: (any) => void) {
+  async subscribe(key: string, callback?: (any, any) => void) {
     if (!this.ws) {
       throw new Error('Unable to subscribe, not open');
     }
-    let subscriptions = this.subscriptions.get(key);
-    if (subscriptions) {
-      subscriptions.add(callback);
-    } else {
-      subscriptions = new Set([callback]);
-      this.subscriptions.set(key, subscriptions);
+    if (callback) {
+      this.addSubscriptionHandler(key, callback);
+    }
+    if (!this.subscriptions.has(key)) {
       const responsePromise = new Promise((resolve, reject) => {
         const handleSubscribeResponse = (k, success, code, message) => {
           if (k !== key) {
@@ -163,30 +164,75 @@ class Client extends EventEmitter {
         this.on('subscribeResponse', handleSubscribeResponse);
       });
       this.ws.send(encode(new SubscribeRequest(key)));
-      await responsePromise;
+      this.subscriptions.add(key);
+      try {
+        await responsePromise;
+      } catch (error) {
+        this.unsubscribe(key, callback);
+        throw error;
+      }
     }
-    callback(this.data.get(key)); // eslint-disable-line no-underscore-dangle
+    if (callback) {
+      callback(this.data.get(key));
+    }
   }
 
-  unsubscribe(key: string, callback: (any) => void) {
+  addSubscriptionHandler(key: string, callback: (any, any) => void) {
+    let handlers = this.subscriptionHandlers.get(key);
+    if (!handlers) {
+      handlers = new Map();
+      this.subscriptionHandlers.set(key, handlers);
+    }
+    if (!handlers.has(callback)) {
+      const setHandler = (k:string, value:any, previousValue: any) => {
+        callback(value, previousValue);
+      };
+      const deleteHandler = (k:string, previousValue:any) => {
+        callback(undefined, previousValue);
+      };
+      handlers.set(callback, [setHandler, deleteHandler]);
+      this.data.on('set', setHandler);
+      this.data.on('set', deleteHandler);
+    }
+  }
+
+  unsubscribe(key: string, callback?: (any, any) => void) {
+    if (!this.subscriptions.has(key)) {
+      return;
+    }
     if (!this.ws) {
       throw new Error('Unable to unsubscribe, not open');
     }
-    const subscriptions = this.subscriptions.get(key);
-    if (!subscriptions) {
-      return;
+    const handlers = this.subscriptionHandlers.get(key);
+    if (handlers) {
+      if (callback) {
+        const dataHandlers = handlers.get(callback);
+        if (!dataHandlers) {
+          throw new Error(`Unable to unsubscribe to key ${key}, callback does not exist`);
+        }
+        const [setHandler, deleteHandler] = dataHandlers;
+        this.data.removeListener('set', setHandler);
+        this.data.removeListener('delete', deleteHandler);
+        handlers.delete(callback);
+        if (handlers.size > 0) {
+          return;
+        }
+      }
+      for (const [setHandler, deleteHandler] of handlers.values()) {
+        this.data.removeListener('set', setHandler);
+        this.data.removeListener('delete', deleteHandler);
+      }
     }
-    subscriptions.delete(callback);
-    if (subscriptions.size === 0) {
-      this.subscriptions.delete(key);
-      this.ws.send(encode(new Unsubscribe(key)));
-    }
+    this.subscriptionHandlers.delete(key);
+    this.subscriptions.delete(key);
+    this.ws.send(encode(new Unsubscribe(key)));
   }
 
   id:string;
   address:string;
   credentials: Object;
-  subscriptions:Map<string, Set<(any) => void>>;
+  subscriptions: Set<string>;
+  subscriptionHandlers:Map<string, Map<(any, any) => void, [(string, any, any) => void, (string, any) => void]>>;
   ws: WebSocket;
   data:ObservedRemoveMap<string, any>;
   timeoutDuration: number;
