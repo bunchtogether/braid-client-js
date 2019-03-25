@@ -1,6 +1,6 @@
 # Braid Client
 
-[![CircleCI](https://circleci.com/gh/bunchtogether/braid-client.svg?style=svg)](https://circleci.com/gh/bunchtogether/braid-client) [![npm version](https://badge.fury.io/js/%40bunchtogether%2Fbraid-client.svg)](http://badge.fury.io/js/%40bunchtogether%2Fbraid-client) [![codecov](https://codecov.io/gh/bunchtogether/braid-client/branch/master/graph/badge.svg)](https://codecov.io/gh/bunchtogether/braid-client)
+[![CircleCI](https://circleci.com/gh/bunchtogether/braid-client-js.svg?style=svg)](https://circleci.com/gh/bunchtogether/braid-client-js) [![npm version](https://badge.fury.io/js/%40bunchtogether%2Fbraid-client.svg)](http://badge.fury.io/js/%40bunchtogether%2Fbraid-client) [![codecov](https://codecov.io/gh/bunchtogether/braid-client-js/branch/master/graph/badge.svg)](https://codecov.io/gh/bunchtogether/braid-client-js)
 
 WebSocket-based key-value synchronization.
 
