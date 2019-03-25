@@ -14,12 +14,14 @@
     "lint:flow": "flow --show-all-errors",
     "coverage": "codecov",
     "start-pre-commit": "git stash -q --keep-index",
-    "end-pre-commit": "git add -u && git stash pop -q"
+    "end-pre-commit": "git add -u && git stash pop -q",
+    "documentation": "documentation readme src/index.js --section='API'"
   },
   "pre-commit": [
     "lint",
     "start-pre-commit",
     "build",
+    "documentation",
     "end-pre-commit"
   ],
   "jest": {

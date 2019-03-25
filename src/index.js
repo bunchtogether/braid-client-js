@@ -18,6 +18,9 @@ const {
   BraidEvent,
 } = require('@bunchtogether/braid-messagepack');
 
+/**
+ * Class representing a credentials error
+ */
 class CredentialsError extends Error {
   code: number;
   constructor(message:string, code:number) {
@@ -27,6 +30,9 @@ class CredentialsError extends Error {
   }
 }
 
+/**
+ * Class representing a subscribe error
+ */
 class SubscribeError extends Error {
   code: number;
   constructor(message:string, code:number) {
@@ -36,6 +42,9 @@ class SubscribeError extends Error {
   }
 }
 
+/**
+ * Class representing an event subscribe error
+ */
 class EventSubscribeError extends Error {
   code: number;
   constructor(message:string, code:number) {
@@ -45,7 +54,13 @@ class EventSubscribeError extends Error {
   }
 }
 
+/**
+ * Class representing a Braid Server
+ */
 class Client extends EventEmitter {
+  /**
+   * Create a Braid Client.
+   */
   constructor() {
     super();
     this.data = new ObservedRemoveMap([], { bufferPublishing: 0 });
@@ -55,6 +70,12 @@ class Client extends EventEmitter {
     this.subscriptionHandlers = new Map();
   }
 
+  /**
+   * Connects to a server.
+   * @param {string} address Websocket URL of the server
+   * @param {Object} [credentials] Credentials to send
+   * @return {Promise<void>}
+   */
   async open(address:string, credentials?:Object = {}) {
     this.address = address;
     this.credentials = credentials;
@@ -117,6 +138,12 @@ class Client extends EventEmitter {
     }
   }
 
+  /**
+   * Close connection to server.
+   * @param {number} [code] Websocket close reason code to send to the server
+   * @param {string} [reason] Websocket close reason to send to the server
+   * @return {Promise<void>}
+   */
   async close(code?: number, reason?: string) {
     if (!this.ws) {
       return;
@@ -136,6 +163,11 @@ class Client extends EventEmitter {
     });
   }
 
+  /**
+   * Send credentials to a server with an open connection.
+   * @param {Object} [credentials] Credentials to send
+   * @return {Promise<void>}
+   */
   async sendCredentials(credentials: Object) {
     if (!this.ws) {
       throw new Error('Unable to send credentials, not open');
@@ -160,6 +192,12 @@ class Client extends EventEmitter {
     await responsePromise;
   }
 
+  /**
+   * Subscribe to updates on a key.
+   * @param {string} key Key to request updates on
+   * @param {(any, any) => void} [callback] Optional callback function
+   * @return {Promise<void>}
+   */
   async subscribe(key: string, callback?: (any, any) => void) {
     if (!this.ws) {
       throw new Error('Unable to subscribe, not open');
@@ -201,6 +239,12 @@ class Client extends EventEmitter {
     }
   }
 
+  /**
+   * Unsubscribe from updates on a key. If the callback parameter is not provided, all callbacks are unsubscribed.
+   * @param {string} key Key to stop updates on
+   * @param {(any, any) => void} [callback] Optional callback function
+   * @return {Promise<void>}
+   */
   unsubscribe(key: string, callback?: (any, any) => void) {
     if (!this.subscriptions.has(key)) {
       return;
@@ -233,6 +277,12 @@ class Client extends EventEmitter {
     this.ws.send(encode(new Unsubscribe(key)));
   }
 
+  /**
+   * Add a subscription handler to a key
+   * @param {string} key Key to add handlers to
+   * @param {(any, any) => void} callback Callback function
+   * @return {Promise<void>}
+   */
   addSubscriptionHandler(key: string, callback: (any, any) => void) {
     let handlers = this.subscriptionHandlers.get(key);
     if (!handlers) {
@@ -252,6 +302,13 @@ class Client extends EventEmitter {
     }
   }
 
+
+  /**
+   * Subscribe to a server event
+   * @param {string} name Name of the event to listen for
+   * @param {(...any) => void} callback Callback
+   * @return {Promise<void>}
+   */
   async addServerEventListener(name: string, callback: (...any) => void) {
     if (!this.ws) {
       throw new Error('Unable to subscribe to event, not open');
@@ -292,6 +349,12 @@ class Client extends EventEmitter {
     }
   }
 
+  /**
+   * Unsubscribe from a server event. If the callback parameter is not provided, all callbacks are unsubscribed.
+   * @param {string} name Name of the event to stop listening
+   * @param {(...any) => void} [callback] Callback
+   * @return {Promise<void>}
+   */
   removeServerEventListener(name: string, callback?: (any) => void) {
     const callbacks = this.eventSubscriptions.get(name);
     if (!callbacks) {
