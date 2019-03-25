@@ -908,10 +908,10 @@
     lodash "^4.17.11"
     to-fast-properties "^2.0.0"
 
-"@bunchtogether/braid-messagepack@1.0.9":
-  version "1.0.9"
-  resolved "https://registry.yarnpkg.com/@bunchtogether/braid-messagepack/-/braid-messagepack-1.0.9.tgz#12a46a6b87d000545bc69beb4625b36b9b8c2cca"
-  integrity sha512-+LFu7eUTcgN1lqLHEuSLPuh6R+nPdu5opftpqi3yTdRGqEfif0hElkTQWQAPRkRXXCxpuQgx0rgwKSGZNwtL+w==
+"@bunchtogether/braid-messagepack@1.0.10":
+  version "1.0.10"
+  resolved "https://registry.yarnpkg.com/@bunchtogether/braid-messagepack/-/braid-messagepack-1.0.10.tgz#84900531edba2de476659702bad0800c122b1ac5"
+  integrity sha512-9CvNeOhBejCA7f8wAVsP50GndFGJaUSaMDZxEkcrpTiVJaf4962VuFWoR/ghnKTSp+ea/DC/SbhVdioI5E5cEQ==
   dependencies:
     msgpack5 "^4.2.1"
 
