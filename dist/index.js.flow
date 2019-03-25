@@ -12,6 +12,10 @@ const {
   SubscribeRequest,
   SubscribeResponse,
   Unsubscribe,
+  EventSubscribeRequest,
+  EventSubscribeResponse,
+  EventUnsubscribe,
+  BraidEvent,
 } = require('@bunchtogether/braid-messagepack');
 
 class CredentialsError extends Error {
@@ -32,12 +36,22 @@ class SubscribeError extends Error {
   }
 }
 
+class EventSubscribeError extends Error {
+  code: number;
+  constructor(message:string, code:number) {
+    super(message);
+    this.name = 'EventSubscribeError';
+    this.code = code;
+  }
+}
+
 class Client extends EventEmitter {
   constructor() {
     super();
     this.data = new ObservedRemoveMap([], { bufferPublishing: 0 });
     this.timeoutDuration = 5000;
     this.subscriptions = new Set();
+    this.eventSubscriptions = new Map();
     this.subscriptionHandlers = new Map();
   }
 
@@ -68,6 +82,16 @@ class Client extends EventEmitter {
         this.emit('credentialsResponse', ws, message.value.success, message.value.code, message.value.message);
       } else if (message instanceof SubscribeResponse) {
         this.emit('subscribeResponse', message.value.key, message.value.success, message.value.code, message.value.message);
+      } else if (message instanceof EventSubscribeResponse) {
+        this.emit('eventSubscribeResponse', message.value.name, message.value.success, message.value.code, message.value.message);
+      } else if (message instanceof BraidEvent) {
+        const callbacks = this.eventSubscriptions.get(message.name);
+        if (!callbacks) {
+          return;
+        }
+        for (const callback of callbacks) {
+          callback(...message.args);
+        }
       }
     };
 
@@ -177,25 +201,6 @@ class Client extends EventEmitter {
     }
   }
 
-  addSubscriptionHandler(key: string, callback: (any, any) => void) {
-    let handlers = this.subscriptionHandlers.get(key);
-    if (!handlers) {
-      handlers = new Map();
-      this.subscriptionHandlers.set(key, handlers);
-    }
-    if (!handlers.has(callback)) {
-      const setHandler = (k:string, value:any, previousValue: any) => {
-        callback(value, previousValue);
-      };
-      const deleteHandler = (k:string, previousValue:any) => {
-        callback(undefined, previousValue);
-      };
-      handlers.set(callback, [setHandler, deleteHandler]);
-      this.data.on('set', setHandler);
-      this.data.on('delete', deleteHandler);
-    }
-  }
-
   unsubscribe(key: string, callback?: (any, any) => void) {
     if (!this.subscriptions.has(key)) {
       return;
@@ -228,10 +233,88 @@ class Client extends EventEmitter {
     this.ws.send(encode(new Unsubscribe(key)));
   }
 
+  addSubscriptionHandler(key: string, callback: (any, any) => void) {
+    let handlers = this.subscriptionHandlers.get(key);
+    if (!handlers) {
+      handlers = new Map();
+      this.subscriptionHandlers.set(key, handlers);
+    }
+    if (!handlers.has(callback)) {
+      const setHandler = (k:string, value:any, previousValue: any) => {
+        callback(value, previousValue);
+      };
+      const deleteHandler = (k:string, previousValue:any) => {
+        callback(undefined, previousValue);
+      };
+      handlers.set(callback, [setHandler, deleteHandler]);
+      this.data.on('set', setHandler);
+      this.data.on('delete', deleteHandler);
+    }
+  }
+
+  async addServerEventListener(name: string, callback: (...any) => void) {
+    if (!this.ws) {
+      throw new Error('Unable to subscribe to event, not open');
+    }
+    let callbacks = this.eventSubscriptions.get(name);
+    if (callbacks) {
+      callbacks.add(callback);
+      return;
+    }
+    callbacks = new Set();
+    callbacks.add(callback);
+    this.eventSubscriptions.set(name, callbacks);
+    const responsePromise = new Promise((resolve, reject) => {
+      const handleEventSubscribeResponse = (n, success, code, message) => {
+        if (n !== name) {
+          return;
+        }
+        clearTimeout(timeout);
+        this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
+        if (success) {
+          resolve();
+        } else {
+          reject(new EventSubscribeError(message, code));
+        }
+      };
+      const timeout = setTimeout(() => {
+        this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
+        reject(new EventSubscribeError(`Event subscription response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504));
+      }, this.timeoutDuration);
+      this.on('eventSubscribeResponse', handleEventSubscribeResponse);
+    });
+    this.ws.send(encode(new EventSubscribeRequest(name)));
+    try {
+      await responsePromise;
+    } catch (error) {
+      this.removeServerEventListener(name, callback);
+      throw error;
+    }
+  }
+
+  removeServerEventListener(name: string, callback?: (any) => void) {
+    const callbacks = this.eventSubscriptions.get(name);
+    if (!callbacks) {
+      return;
+    }
+    if (!this.ws) {
+      throw new Error('Unable to unsubscribe from server event, not open');
+    }
+    if (callback) {
+      callbacks.delete(callback);
+      if (callbacks.size > 0) {
+        return;
+      }
+    }
+    this.eventSubscriptions.delete(name);
+    this.ws.send(encode(new EventUnsubscribe(name)));
+  }
+
   id:string;
   address:string;
   credentials: Object;
   subscriptions: Set<string>;
+  eventSubscriptions: Map<string, Set<(...any) => void>>;
   subscriptionHandlers:Map<string, Map<(any, any) => void, [(string, any, any) => void, (string, any) => void]>>;
   ws: WebSocket;
   data:ObservedRemoveMap<string, any>;
