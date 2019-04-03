@@ -76,7 +76,7 @@ Class representing an event subscribe error
 
 **Extends EventEmitter**
 
-Class representing a Braid Server
+Class representing a Braid Client
 
 #### open
 

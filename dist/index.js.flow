@@ -55,19 +55,9 @@ class EventSubscribeError extends Error {
 }
 
 /**
- * Class representing a Braid Server
+ * Class representing a Braid Client
  */
 class Client extends EventEmitter {
-<<<<<<< Updated upstream
-=======
-<<<<<<< Updated upstream
-=======
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
->>>>>>> Stashed changes
->>>>>>> Stashed changes
   /**
    * Create a Braid Client.
    */

@@ -55,7 +55,7 @@ class EventSubscribeError extends Error {
 }
 
 /**
- * Class representing a Braid Server
+ * Class representing a Braid Client
  */
 class Client extends EventEmitter {
   /**
