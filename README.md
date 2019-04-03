@@ -30,14 +30,18 @@ See also:
         -   [Parameters](#parameters-5)
     -   [subscribe](#subscribe)
         -   [Parameters](#parameters-6)
-    -   [unsubscribe](#unsubscribe)
+    -   [sendSubscribeRequest](#sendsubscriberequest)
         -   [Parameters](#parameters-7)
-    -   [addSubscriptionHandler](#addsubscriptionhandler)
+    -   [unsubscribe](#unsubscribe)
         -   [Parameters](#parameters-8)
-    -   [addServerEventListener](#addservereventlistener)
+    -   [addSubscriptionHandler](#addsubscriptionhandler)
         -   [Parameters](#parameters-9)
-    -   [removeServerEventListener](#removeservereventlistener)
+    -   [addServerEventListener](#addservereventlistener)
         -   [Parameters](#parameters-10)
+    -   [sendEventSubscribeRequest](#sendeventsubscriberequest)
+        -   [Parameters](#parameters-11)
+    -   [removeServerEventListener](#removeservereventlistener)
+        -   [Parameters](#parameters-12)
 
 ### CredentialsError
 
@@ -121,6 +125,16 @@ Subscribe to updates on a key.
 
 Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 
 
+#### sendSubscribeRequest
+
+Send subscribe request to server
+
+##### Parameters
+
+-   `key` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** Key to request updates on
+
+Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 
+
 #### unsubscribe
 
 Unsubscribe from updates on a key. If the callback parameter is not provided, all callbacks are unsubscribed.
@@ -151,6 +165,16 @@ Subscribe to a server event
 
 -   `name` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** Name of the event to listen for
 -   `callback` **function (): void** 
+
+Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 
+
+#### sendEventSubscribeRequest
+
+Send event subscribe request to server
+
+##### Parameters
+
+-   `name` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** Name of the event to listen for
 
 Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 
 

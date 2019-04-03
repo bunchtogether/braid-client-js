@@ -2,7 +2,7 @@
 
 const { EventEmitter } = require('events');
 const WebSocket = require('isomorphic-ws');
-const { ObservedRemoveMap } = require('observed-remove');
+const ObservedRemoveMap = require('observed-remove/dist/map');
 const {
   encode,
   decode,
@@ -68,6 +68,8 @@ class Client extends EventEmitter {
     this.subscriptions = new Set();
     this.eventSubscriptions = new Map();
     this.subscriptionHandlers = new Map();
+    this.setMaxListeners(Infinity);
+    this.reconnectAttempts = 0;
   }
 
   /**
@@ -77,10 +79,23 @@ class Client extends EventEmitter {
    * @return {Promise<void>}
    */
   async open(address:string, credentials?:Object = {}) {
+    this.shouldReconnect = true;
     this.address = address;
     this.credentials = credentials;
 
     const ws = new WebSocket(address);
+
+    const heartbeatInterval = setInterval(() => {
+      if (ws.readyState === 1) {
+        ws.send(new Uint8Array([0]));
+      }
+    }, 5000);
+
+    const flushInterval = setInterval(() => {
+      this.data.flush();
+    }, 30000);
+
+    ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
       this.emit('open');
@@ -88,17 +103,20 @@ class Client extends EventEmitter {
     };
 
     ws.onclose = (event) => {
+      clearInterval(heartbeatInterval);
+      clearInterval(flushInterval);
       const { wasClean, reason, code } = event;
-      console.log(`${wasClean ? 'Cleanly' : 'Uncleanly'} closed websocket connection to ${this.address} with code ${code}${reason ? `: ${reason}` : ''}`);
+      console.log(`${wasClean ? 'Cleanly' : 'Uncleanly'} closed websocket connection to Braid server at ${this.address} with code ${code}${reason ? `: ${reason}` : ''}`);
       delete this.ws;
       this.emit('close', code, reason);
+      this.reconnect();
     };
 
     ws.onmessage = (event) => {
       const { data } = event;
       const message = decode(data);
       if (message instanceof DataDump) {
-        this.data.process(message.queue); // eslint-disable-line no-underscore-dangle
+        this.data.process(message.queue, true); // eslint-disable-line no-underscore-dangle
       } else if (message instanceof CredentialsResponse) {
         this.emit('credentialsResponse', ws, message.value.success, message.value.code, message.value.message);
       } else if (message instanceof SubscribeResponse) {
@@ -133,9 +151,44 @@ class Client extends EventEmitter {
       this.once('open', onOpen);
     });
 
+    console.log(`Opened websocket connection to Braid server at ${this.address}`);
+
     if (credentials) {
       await this.sendCredentials(credentials);
     }
+
+    const subscriptionPromises = [];
+
+    for (const key of this.subscriptions) {
+      subscriptionPromises.push(this.sendSubscribeRequest(key).catch((error) => {
+        console.error(error);
+        this.emit('error', error);
+      }));
+    }
+
+    for (const name of this.eventSubscriptions.keys()) {
+      subscriptionPromises.push(this.sendEventSubscribeRequest(name).catch((error) => {
+        console.error(error);
+        this.emit('error', error);
+      }));
+    }
+
+    await Promise.all(subscriptionPromises);
+  }
+
+  async reconnect() {
+    if (!this.shouldReconnect) {
+      return;
+    }
+    this.reconnectAttempts += 1;
+    clearTimeout(this.reconnectAttemptResetTimeout);
+    const duration = this.reconnectAttempts > 5 ? 25000 + Math.round(Math.random() * 10000) : this.reconnectAttempts * this.reconnectAttempts * 1000;
+    console.log(`Reconnect attempt ${this.reconnectAttempts} in ${Math.round(duration / 100) / 10} seconds`);
+    await new Promise((resolve) => setTimeout(resolve, duration));
+    this.open(this.address, this.credentials);
+    this.reconnectAttemptResetTimeout = setTimeout(() => {
+      this.reconnectAttempts = 0;
+    }, 60000);
   }
 
   /**
@@ -148,6 +201,7 @@ class Client extends EventEmitter {
     if (!this.ws) {
       return;
     }
+    this.shouldReconnect = false;
     await new Promise((resolve, reject) => {
       const onClose = () => {
         this.removeListener('error', onError);
@@ -199,44 +253,52 @@ class Client extends EventEmitter {
    * @return {Promise<void>}
    */
   async subscribe(key: string, callback?: (any, any) => void) {
-    if (!this.ws) {
-      throw new Error('Unable to subscribe, not open');
-    }
     if (callback) {
       this.addSubscriptionHandler(key, callback);
     }
     if (!this.subscriptions.has(key)) {
-      const responsePromise = new Promise((resolve, reject) => {
-        const handleSubscribeResponse = (k, success, code, message) => {
-          if (k !== key) {
-            return;
-          }
-          clearTimeout(timeout);
-          this.removeListener('subscribeResponse', handleSubscribeResponse);
-          if (success) {
-            resolve();
-          } else {
-            reject(new SubscribeError(message, code));
-          }
-        };
-        const timeout = setTimeout(() => {
-          this.removeListener('subscribeResponse', handleSubscribeResponse);
-          reject(new SubscribeError(`Subscription response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504));
-        }, this.timeoutDuration);
-        this.on('subscribeResponse', handleSubscribeResponse);
-      });
-      this.ws.send(encode(new SubscribeRequest(key)));
       this.subscriptions.add(key);
-      try {
-        await responsePromise;
-      } catch (error) {
-        this.unsubscribe(key, callback);
-        throw error;
+      if (this.ws) {
+        try {
+          await this.sendSubscribeRequest(key);
+        } catch (error) {
+          this.unsubscribe(key, callback);
+          throw error;
+        }
       }
     }
     if (callback) {
       callback(this.data.get(key));
     }
+  }
+
+  /**
+   * Send subscribe request to server
+   * @param {string} key Key to request updates on
+   * @return {Promise<void>}
+   */
+  async sendSubscribeRequest(key: string) {
+    const responsePromise = new Promise((resolve, reject) => {
+      const handleSubscribeResponse = (k, success, code, message) => {
+        if (k !== key) {
+          return;
+        }
+        clearTimeout(timeout);
+        this.removeListener('subscribeResponse', handleSubscribeResponse);
+        if (success) {
+          resolve();
+        } else {
+          reject(new SubscribeError(message, code));
+        }
+      };
+      const timeout = setTimeout(() => {
+        this.removeListener('subscribeResponse', handleSubscribeResponse);
+        reject(new SubscribeError(`Subscription response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504));
+      }, this.timeoutDuration);
+      this.on('subscribeResponse', handleSubscribeResponse);
+    });
+    this.ws.send(encode(new SubscribeRequest(key)));
+    await responsePromise;
   }
 
   /**
@@ -248,9 +310,6 @@ class Client extends EventEmitter {
   unsubscribe(key: string, callback?: (any, any) => void) {
     if (!this.subscriptions.has(key)) {
       return;
-    }
-    if (!this.ws) {
-      throw new Error('Unable to unsubscribe, not open');
     }
     const handlers = this.subscriptionHandlers.get(key);
     if (handlers) {
@@ -274,6 +333,9 @@ class Client extends EventEmitter {
     }
     this.subscriptionHandlers.delete(key);
     this.subscriptions.delete(key);
+    if (!this.ws) {
+      return;
+    }
     this.ws.send(encode(new Unsubscribe(key)));
   }
 
@@ -310,9 +372,6 @@ class Client extends EventEmitter {
    * @return {Promise<void>}
    */
   async addServerEventListener(name: string, callback: (...any) => void) {
-    if (!this.ws) {
-      throw new Error('Unable to subscribe to event, not open');
-    }
     let callbacks = this.eventSubscriptions.get(name);
     if (callbacks) {
       callbacks.add(callback);
@@ -321,6 +380,22 @@ class Client extends EventEmitter {
     callbacks = new Set();
     callbacks.add(callback);
     this.eventSubscriptions.set(name, callbacks);
+    if (this.ws) {
+      try {
+        await this.sendEventSubscribeRequest(name);
+      } catch (error) {
+        this.removeServerEventListener(name, callback);
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Send event subscribe request to server
+   * @param {string} name Name of the event to listen for
+   * @return {Promise<void>}
+   */
+  async sendEventSubscribeRequest(name: string) {
     const responsePromise = new Promise((resolve, reject) => {
       const handleEventSubscribeResponse = (n, success, code, message) => {
         if (n !== name) {
@@ -341,12 +416,7 @@ class Client extends EventEmitter {
       this.on('eventSubscribeResponse', handleEventSubscribeResponse);
     });
     this.ws.send(encode(new EventSubscribeRequest(name)));
-    try {
-      await responsePromise;
-    } catch (error) {
-      this.removeServerEventListener(name, callback);
-      throw error;
-    }
+    await responsePromise;
   }
 
   /**
@@ -360,9 +430,6 @@ class Client extends EventEmitter {
     if (!callbacks) {
       return;
     }
-    if (!this.ws) {
-      throw new Error('Unable to unsubscribe from server event, not open');
-    }
     if (callback) {
       callbacks.delete(callback);
       if (callbacks.size > 0) {
@@ -370,6 +437,9 @@ class Client extends EventEmitter {
       }
     }
     this.eventSubscriptions.delete(name);
+    if (!this.ws) {
+      return;
+    }
     this.ws.send(encode(new EventUnsubscribe(name)));
   }
 
@@ -382,6 +452,9 @@ class Client extends EventEmitter {
   ws: WebSocket;
   data:ObservedRemoveMap<string, any>;
   timeoutDuration: number;
+  reconnectAttempts: number;
+  shouldReconnect: boolean;
+  reconnectAttemptResetTimeout: TimeoutID;
 }
 
 module.exports = Client;
