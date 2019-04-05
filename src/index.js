@@ -68,7 +68,7 @@ class Client extends EventEmitter {
     this.subscriptions = new Set();
     this.eventSubscriptions = new Map();
     this.subscriptionHandlers = new Map();
-    this.setMaxListeners(Infinity);
+    this.setMaxListeners(0);
     this.reconnectAttempts = 0;
   }
 
