@@ -84,6 +84,11 @@ class Client extends EventEmitter {
    * @return {Promise<void>}
    */
   async open(address:string, credentials?:Object = {}) {
+
+    if (this.ws) {
+      throw new Error(`Connection to ${this.address} already open`);
+    }
+
     this.shouldReconnect = true;
     this.address = address;
 
