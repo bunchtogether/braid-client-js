@@ -22,6 +22,7 @@ See also:
 -   [EventSubscribeError](#eventsubscribeerror)
     -   [Parameters](#parameters-2)
 -   [Client](#client)
+    -   [data](#data)
     -   [open](#open)
         -   [Parameters](#parameters-3)
     -   [close](#close)
@@ -34,14 +35,12 @@ See also:
         -   [Parameters](#parameters-7)
     -   [unsubscribe](#unsubscribe)
         -   [Parameters](#parameters-8)
-    -   [addSubscriptionHandler](#addsubscriptionhandler)
-        -   [Parameters](#parameters-9)
     -   [addServerEventListener](#addservereventlistener)
-        -   [Parameters](#parameters-10)
+        -   [Parameters](#parameters-9)
     -   [sendEventSubscribeRequest](#sendeventsubscriberequest)
-        -   [Parameters](#parameters-11)
+        -   [Parameters](#parameters-10)
     -   [removeServerEventListener](#removeservereventlistener)
-        -   [Parameters](#parameters-12)
+        -   [Parameters](#parameters-11)
 
 ### CredentialsError
 
@@ -82,6 +81,10 @@ Class representing an event subscribe error
 
 Class representing a Braid Client
 
+#### data
+
+Primary data object. Like a native JS Map but with 'set' and 'delete' events.
+
 #### open
 
 Connects to a server.
@@ -121,7 +124,6 @@ Subscribe to updates on a key.
 ##### Parameters
 
 -   `key` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** Key to request updates on
--   `callback` **function (any, any): void** 
 
 Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 
 
@@ -142,18 +144,6 @@ Unsubscribe from updates on a key. If the callback parameter is not provided, al
 ##### Parameters
 
 -   `key` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** Key to stop updates on
--   `callback` **function (any, any): void** 
-
-Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 
-
-#### addSubscriptionHandler
-
-Add a subscription handler to a key
-
-##### Parameters
-
--   `key` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** Key to add handlers to
--   `callback` **function (any, any): void** 
 
 Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 
 

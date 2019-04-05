@@ -63,11 +63,16 @@ class Client extends EventEmitter {
    */
   constructor() {
     super();
+    /**
+     * Primary data object. Like a native JS Map but with 'set' and 'delete' events.
+     *
+     * @type ObservedRemoveMap<K, V>
+     * @public
+     */
     this.data = new ObservedRemoveMap([], { bufferPublishing: 0 });
     this.timeoutDuration = 5000;
     this.subscriptions = new Set();
     this.eventSubscriptions = new Map();
-    this.subscriptionHandlers = new Map();
     this.setMaxListeners(0);
     this.reconnectAttempts = 0;
   }
@@ -81,7 +86,6 @@ class Client extends EventEmitter {
   async open(address       , credentials         = {}) {
     this.shouldReconnect = true;
     this.address = address;
-    this.credentials = credentials;
 
     const ws = new WebSocket(address);
 
@@ -185,7 +189,12 @@ class Client extends EventEmitter {
     const duration = this.reconnectAttempts > 5 ? 25000 + Math.round(Math.random() * 10000) : this.reconnectAttempts * this.reconnectAttempts * 1000;
     console.log(`Reconnect attempt ${this.reconnectAttempts} in ${Math.round(duration / 100) / 10} seconds`);
     await new Promise((resolve) => setTimeout(resolve, duration));
-    this.open(this.address, this.credentials);
+    try {
+      await this.open(this.address, this.credentials);
+    } catch (error) {
+      console.log(`Reconnect attempt ${this.reconnectAttempts} failed: ${error.message}`);
+      this.emit('reconnectError', error);
+    }
     this.reconnectAttemptResetTimeout = setTimeout(() => {
       this.reconnectAttempts = 0;
     }, 60000);
@@ -223,8 +232,9 @@ class Client extends EventEmitter {
    * @return {Promise<void>}
    */
   async sendCredentials(credentials        ) {
+    this.credentials = credentials;
     if (!this.ws) {
-      throw new Error('Unable to send credentials, not open');
+      return;
     }
     const responsePromise = new Promise((resolve, reject) => {
       const handleCredentialsResponse = (success, code, message) => {
@@ -252,23 +262,17 @@ class Client extends EventEmitter {
    * @param {(any, any) => void} [callback] Optional callback function
    * @return {Promise<void>}
    */
-  async subscribe(key        , callback                     ) {
-    if (callback) {
-      this.addSubscriptionHandler(key, callback);
-    }
+  async subscribe(key        ) {
     if (!this.subscriptions.has(key)) {
       this.subscriptions.add(key);
       if (this.ws) {
         try {
           await this.sendSubscribeRequest(key);
         } catch (error) {
-          this.unsubscribe(key, callback);
+          this.unsubscribe(key);
           throw error;
         }
       }
-    }
-    if (callback) {
-      callback(this.data.get(key));
     }
   }
 
@@ -307,63 +311,16 @@ class Client extends EventEmitter {
    * @param {(any, any) => void} [callback] Optional callback function
    * @return {Promise<void>}
    */
-  unsubscribe(key        , callback                     ) {
+  unsubscribe(key        ) {
     if (!this.subscriptions.has(key)) {
       return;
     }
-    const handlers = this.subscriptionHandlers.get(key);
-    if (handlers) {
-      if (callback) {
-        const dataHandlers = handlers.get(callback);
-        if (!dataHandlers) {
-          throw new Error(`Unable to unsubscribe to key ${key}, callback does not exist`);
-        }
-        const [setHandler, deleteHandler] = dataHandlers;
-        this.data.removeListener('set', setHandler);
-        this.data.removeListener('delete', deleteHandler);
-        handlers.delete(callback);
-        if (handlers.size > 0) {
-          return;
-        }
-      }
-      for (const [setHandler, deleteHandler] of handlers.values()) {
-        this.data.removeListener('set', setHandler);
-        this.data.removeListener('delete', deleteHandler);
-      }
-    }
-    this.subscriptionHandlers.delete(key);
     this.subscriptions.delete(key);
     if (!this.ws) {
       return;
     }
     this.ws.send(encode(new Unsubscribe(key)));
   }
-
-  /**
-   * Add a subscription handler to a key
-   * @param {string} key Key to add handlers to
-   * @param {(any, any) => void} callback Callback function
-   * @return {Promise<void>}
-   */
-  addSubscriptionHandler(key        , callback                    ) {
-    let handlers = this.subscriptionHandlers.get(key);
-    if (!handlers) {
-      handlers = new Map();
-      this.subscriptionHandlers.set(key, handlers);
-    }
-    if (!handlers.has(callback)) {
-      const setHandler = (k       , value    , previousValue     ) => {
-        callback(value, previousValue);
-      };
-      const deleteHandler = (k       , previousValue    ) => {
-        callback(undefined, previousValue);
-      };
-      handlers.set(callback, [setHandler, deleteHandler]);
-      this.data.on('set', setHandler);
-      this.data.on('delete', deleteHandler);
-    }
-  }
-
 
   /**
    * Subscribe to a server event
@@ -448,7 +405,6 @@ class Client extends EventEmitter {
                       
                              
                                                          
-                                                                                                                 
                 
                                       
                           
