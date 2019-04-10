@@ -84,7 +84,6 @@ class Client extends EventEmitter {
    * @return {Promise<void>}
    */
   async open(address       , credentials         = {}) {
-
     if (this.ws) {
       throw new Error(`Connection to ${this.address} already open`);
     }
@@ -164,8 +163,12 @@ class Client extends EventEmitter {
 
     if (credentials) {
       await this.sendCredentials(credentials);
+    } else {
+      await this.sendSubscribeRequests();
     }
+  }
 
+  async sendSubscribeRequests() {
     const subscriptionPromises = [];
 
     for (const key of this.subscriptions) {
@@ -258,7 +261,10 @@ class Client extends EventEmitter {
       this.on('credentialsResponse', handleCredentialsResponse);
     });
     this.ws.send(encode(new Credentials(credentials)));
+
     await responsePromise;
+
+    await this.sendSubscribeRequests();
   }
 
   /**
