@@ -147,11 +147,23 @@ class Client extends EventEmitter {
     };
 
     await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.removeListener('error', onError);
+        this.removeListener('open', onOpen);
+        try {
+          ws.close(1011, `Timeout after ${this.timeoutDuration * 2}`);
+        } catch (error) {
+          console.log(`Unable to close connection to ${this.address}: ${error.message}`);
+        }
+        reject(`Timeout when opening connection to ${this.address}`);
+      }, this.timeoutDuration * 2);
       const onOpen = () => {
+        clearTimeout(timeout);
         this.removeListener('error', onError);
         resolve();
       };
       const onError = (event: Event) => {
+        clearTimeout(timeout);
         this.removeListener('open', onOpen);
         reject(event);
       };
@@ -188,24 +200,27 @@ class Client extends EventEmitter {
     await Promise.all(subscriptionPromises);
   }
 
-  async reconnect() {
+  reconnect() {
     if (!this.shouldReconnect) {
       return;
     }
+    clearTimeout(this.reconnectTimeout);
+    clearTimeout(this.reconnectAttemptResetTimeout);
     this.reconnectAttempts += 1;
     clearTimeout(this.reconnectAttemptResetTimeout);
     const duration = this.reconnectAttempts > 5 ? 25000 + Math.round(Math.random() * 10000) : this.reconnectAttempts * this.reconnectAttempts * 1000;
     console.log(`Reconnect attempt ${this.reconnectAttempts} in ${Math.round(duration / 100) / 10} seconds`);
-    await new Promise((resolve) => setTimeout(resolve, duration));
-    try {
-      await this.open(this.address, this.credentials);
-    } catch (error) {
-      console.log(`Reconnect attempt ${this.reconnectAttempts} failed: ${error.message}`);
-      this.emit('reconnectError', error);
-    }
-    this.reconnectAttemptResetTimeout = setTimeout(() => {
-      this.reconnectAttempts = 0;
-    }, 60000);
+    this.reconnectTimeout = setTimeout(async () => {
+      try {
+        await this.open(this.address, this.credentials);
+      } catch (error) {
+        console.log(`Reconnect attempt ${this.reconnectAttempts} failed: ${error.message}`);
+        this.emit('reconnectError', error);
+      }
+      this.reconnectAttemptResetTimeout = setTimeout(() => {
+        this.reconnectAttempts = 0;
+      }, 60000);
+    }, duration);
   }
 
   /**
@@ -215,10 +230,12 @@ class Client extends EventEmitter {
    * @return {Promise<void>}
    */
   async close(code?: number, reason?: string) {
+    clearTimeout(this.reconnectTimeout);
+    clearTimeout(this.reconnectAttemptResetTimeout);
+    this.shouldReconnect = false;
     if (!this.ws) {
       return;
     }
-    this.shouldReconnect = false;
     await new Promise((resolve, reject) => {
       const onClose = () => {
         this.removeListener('error', onError);
@@ -422,6 +439,7 @@ class Client extends EventEmitter {
   reconnectAttempts: number;
   shouldReconnect: boolean;
   reconnectAttemptResetTimeout: TimeoutID;
+  reconnectTimeout: TimeoutID;
 }
 
 module.exports = Client;
