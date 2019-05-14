@@ -126,7 +126,7 @@ class Client extends EventEmitter {
       if (message instanceof DataDump) {
         this.data.process(message.queue, true); // eslint-disable-line no-underscore-dangle
       } else if (message instanceof CredentialsResponse) {
-        this.emit('credentialsResponse', ws, message.value.success, message.value.code, message.value.message);
+        this.emit('credentialsResponse', message.value.success, message.value.code, message.value.message);
       } else if (message instanceof SubscribeResponse) {
         this.emit('subscribeResponse', message.value.key, message.value.success, message.value.code, message.value.message);
       } else if (message instanceof EventSubscribeResponse) {
@@ -265,7 +265,7 @@ class Client extends EventEmitter {
       const handleCredentialsResponse = (success, code, message) => {
         clearTimeout(timeout);
         this.removeListener('credentialsResponse', handleCredentialsResponse);
-        if (success) {
+        if (success === true) {
           resolve();
         } else {
           reject(new CredentialsError(message, code));
@@ -317,7 +317,7 @@ class Client extends EventEmitter {
         }
         clearTimeout(timeout);
         this.removeListener('subscribeResponse', handleSubscribeResponse);
-        if (success) {
+        if (success === true) {
           resolve();
         } else {
           reject(new SubscribeError(message, code));
@@ -388,7 +388,7 @@ class Client extends EventEmitter {
         }
         clearTimeout(timeout);
         this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
-        if (success) {
+        if (success === true) {
           resolve();
         } else {
           reject(new EventSubscribeError(message, code));
