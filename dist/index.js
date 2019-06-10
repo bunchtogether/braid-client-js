@@ -189,17 +189,17 @@ class Client extends EventEmitter {
         } catch (error) {
           console.log(`Unable to close connection to ${this.address}: ${error.message}`);
         }
-        reject(`Timeout when opening connection to ${this.address}`);
+        reject(new Error(`Timeout when opening connection to ${this.address}`));
       }, this.timeoutDuration * 2);
       const onOpen = () => {
         clearTimeout(timeout);
         this.removeListener('error', onError);
         resolve();
       };
-      const onError = (event       ) => {
+      const onError = (error      ) => {
         clearTimeout(timeout);
         this.removeListener('open', onOpen);
-        reject(event);
+        reject(error);
       };
       this.once('error', onError);
       this.once('open', onOpen);
@@ -275,9 +275,9 @@ class Client extends EventEmitter {
         this.removeListener('error', onError);
         resolve();
       };
-      const onError = (event       ) => {
+      const onError = (error       ) => {
         this.removeListener('close', onClose);
-        reject(event);
+        reject(error);
       };
       this.once('error', onError);
       this.once('close', onClose);
