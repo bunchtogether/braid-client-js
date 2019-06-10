@@ -114,7 +114,41 @@ class Client extends EventEmitter {
       clearInterval(heartbeatInterval);
       clearInterval(flushInterval);
       const { wasClean, reason, code } = event;
-      console.log(`${wasClean ? 'Cleanly' : 'Uncleanly'} closed websocket connection to Braid server at ${this.address} with code ${code}${reason ? `: ${reason}` : ''}`);
+      let calculatedReason = reason;
+
+      if (!calculatedReason) {
+        if (code === 1000) {
+          calculatedReason = 'Normal closure, meaning that the purpose for which the connection was established has been fulfilled.';
+        } else if (code === 1001) {
+          calculatedReason = 'An endpoint is "going away", such as a server going down or a browser having navigated away from a page.';
+        } else if (code === 1002) {
+          calculatedReason = 'An endpoint is terminating the connection due to a protocol error';
+        } else if (code === 1003) {
+          calculatedReason = 'An endpoint is terminating the connection because it has received a type of data it cannot accept (e.g., an endpoint that understands only text data MAY send this if it receives a binary message).';
+        } else if (code === 1004) {
+          calculatedReason = 'Reserved. The specific meaning might be defined in the future.';
+        } else if (code === 1005) {
+          calculatedReason = 'No status code was actually present.';
+        } else if (code === 1006) {
+          calculatedReason = 'The connection was closed abnormally, e.g., without sending or receiving a Close control frame';
+        } else if (code === 1007) {
+          calculatedReason = 'An endpoint is terminating the connection because it has received data within a message that was not consistent with the type of the message (e.g., non-UTF-8 [http://tools.ietf.org/html/rfc3629] data within a text message).';
+        } else if (code === 1008) {
+          calculatedReason = 'An endpoint is terminating the connection because it has received a message that "violates its policy". This reason is given either if there is no other sutible reason, or if there is a need to hide specific details about the policy.';
+        } else if (code === 1009) {
+          calculatedReason = 'An endpoint is terminating the connection because it has received a message that is too big for it to process.';
+        } else if (code === 1010) {
+          calculatedReason = `An endpoint (client) is terminating the connection because it has expected the server to negotiate one or more extension, but the server didn't return them in the response message of the WebSocket handshake. <br /> Specifically, the extensions that are needed are: ${reason || 'Unknown'}`;
+        } else if (code === 1011) {
+          calculatedReason = 'A server is terminating the connection because it encountered an unexpected condition that prevented it from fulfilling the request.';
+        } else if (code === 1015) {
+          calculatedReason = "The connection was closed due to a failure to perform a TLS handshake (e.g., the server certificate can't be verified).";
+        } else {
+          calculatedReason = '';
+        }
+      }
+
+      console.log(`${wasClean ? 'Cleanly' : 'Uncleanly'} closed websocket connection to Braid server at ${this.address} with code ${code}${calculatedReason ? `: ${calculatedReason}` : ''}`);
       delete this.ws;
       this.emit('close', code, reason);
       this.reconnect();
@@ -142,8 +176,8 @@ class Client extends EventEmitter {
       }
     };
 
-    ws.onerror = (event) => {
-      this.emit('error', event);
+    ws.onerror = () => {
+      this.emit('error', new Error(`Websocket error when connecting to ${this.address}, check the 'close' event for additional details`));
     };
 
     await new Promise((resolve, reject) => {
@@ -185,14 +219,14 @@ class Client extends EventEmitter {
 
     for (const key of this.subscriptions) {
       subscriptionPromises.push(this.sendSubscribeRequest(key).catch((error) => {
-        console.error(error);
+        console.log(`Error subscribing to ${key}: ${error.message}`);
         this.emit('error', error);
       }));
     }
 
     for (const name of this.eventSubscriptions.keys()) {
       subscriptionPromises.push(this.sendEventSubscribeRequest(name).catch((error) => {
-        console.error(error);
+        console.log(`Error subscribing to event ${name}: ${error.message}`);
         this.emit('error', error);
       }));
     }
@@ -215,7 +249,7 @@ class Client extends EventEmitter {
         await this.open(this.address, this.credentials);
       } catch (error) {
         console.log(`Reconnect attempt ${this.reconnectAttempts} failed: ${error.message}`);
-        this.emit('reconnectError', error);
+        this.emit('error', error);
       }
       this.reconnectAttemptResetTimeout = setTimeout(() => {
         this.reconnectAttempts = 0;
