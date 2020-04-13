@@ -13,17 +13,13 @@
     "lint:js": "eslint -c ./.eslintrc --no-eslintrc --fix --cache .",
     "lint:flow": "flow --show-all-errors",
     "coverage": "codecov",
-    "start-pre-commit": "git stash -q --keep-index",
-    "end-pre-commit": "git add -u && git stash pop -q",
     "documentation": "documentation readme src/index.js --section='API'"
   },
-  "pre-commit": [
-    "lint",
-    "start-pre-commit",
-    "build",
-    "documentation",
-    "end-pre-commit"
-  ],
+  "husky": {
+    "hooks": {
+      "pre-commit": "yarn lint && yarn documentation && yarn build && git add dist"
+    }
+  },
   "jest": {
     "coverageDirectory": "./coverage/",
     "collectCoverage": true,
@@ -53,14 +49,14 @@
     "flow-copy-source": "^2.0.3",
     "flow-remove-types": "^1.2.3",
     "flow-typed": "^2.5.1",
+    "husky": "^4.2.5",
     "jest": "^24.7.0",
     "jest-diff": "^24.7.0",
-    "jest-flow-transform": "^1.0.1",
-    "pre-commit": "^1.2.2"
+    "jest-flow-transform": "^1.0.1"
   },
   "dependencies": {
     "@bunchtogether/braid-messagepack": "1.1.10",
     "isomorphic-ws": "^4.0.1",
-    "observed-remove": "^2.2.5"
+    "observed-remove": "^2.2.7"
   }
 }
