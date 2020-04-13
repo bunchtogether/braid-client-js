@@ -22,7 +22,7 @@ const {
  * Class representing a credentials error
  */
 class CredentialsError extends Error {
-               
+  code        ;
   constructor(message       , code       ) {
     super(message);
     this.name = 'CredentialsError';
@@ -34,7 +34,7 @@ class CredentialsError extends Error {
  * Class representing a subscribe error
  */
 class SubscribeError extends Error {
-               
+  code        ;
   constructor(message       , code       ) {
     super(message);
     this.name = 'SubscribeError';
@@ -46,7 +46,7 @@ class SubscribeError extends Error {
  * Class representing an event subscribe error
  */
 class EventSubscribeError extends Error {
-               
+  code        ;
   constructor(message       , code       ) {
     super(message);
     this.name = 'EventSubscribeError';
@@ -462,18 +462,18 @@ class Client extends EventEmitter {
     this.ws.send(encode(new EventUnsubscribe(name)));
   }
 
-            
-                 
-                      
-                             
-                                                         
-                
-                                      
-                          
-                            
-                           
-                                          
-                              
+  id       ;
+  address       ;
+  credentials        ;
+  subscriptions             ;
+  eventSubscriptions                                    ;
+  ws           ;
+  data                               ;
+  timeoutDuration        ;
+  reconnectAttempts        ;
+  shouldReconnect         ;
+  reconnectAttemptResetTimeout           ;
+  reconnectTimeout           ;
 }
 
 module.exports = Client;
