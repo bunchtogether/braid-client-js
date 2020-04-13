@@ -1,6 +1,6 @@
 {
   "name": "@bunchtogether/braid-client",
-  "version": "1.1.14",
+  "version": "1.1.15",
   "main": "dist/index.js",
   "repository": "https://github.com/bunchtogether/braid-client-js.git",
   "author": "johnwehr@bunchtogether.com",
@@ -17,7 +17,7 @@
   },
   "husky": {
     "hooks": {
-      "pre-commit": "yarn lint && yarn documentation && yarn build && git add dist"
+      "pre-commit": "yarn lint && yarn build && git add dist ./README.md"
     }
   },
   "jest": {
@@ -26,12 +26,12 @@
     "collectCoverageFrom": [
       "src/*.js",
       "src/**/*.js"
-    ],
-    "transform": {
-      "^.+\\.js(?:\\.flow)?$": "jest-flow-transform"
-    }
+    ]
   },
   "devDependencies": {
+    "@babel/core": "^7.9.0",
+    "@babel/plugin-proposal-class-properties": "^7.8.3",
+    "@babel/plugin-transform-flow-strip-types": "^7.9.0",
     "babel-eslint": "^10.1.0",
     "codecov": "^3.6.5",
     "cross-env": "^7.0.2",
@@ -51,12 +51,11 @@
     "flow-typed": "^3.1.0",
     "husky": "^4.2.5",
     "jest": "^25.3.0",
-    "jest-diff": "^25.3.0",
-    "jest-flow-transform": "^1.0.1"
+    "jest-diff": "^25.3.0"
   },
   "dependencies": {
     "@bunchtogether/braid-messagepack": "1.1.10",
     "isomorphic-ws": "^4.0.1",
-    "observed-remove": "^2.2.7"
+    "observed-remove": "^2.2.26"
   }
 }

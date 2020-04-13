@@ -22,7 +22,7 @@ const {
  * Class representing a credentials error
  */
 class CredentialsError extends Error {
-  code: number;
+  declare code: number;
   constructor(message:string, code:number) {
     super(message);
     this.name = 'CredentialsError';
@@ -34,7 +34,7 @@ class CredentialsError extends Error {
  * Class representing a subscribe error
  */
 class SubscribeError extends Error {
-  code: number;
+  declare code: number;
   constructor(message:string, code:number) {
     super(message);
     this.name = 'SubscribeError';
@@ -46,7 +46,7 @@ class SubscribeError extends Error {
  * Class representing an event subscribe error
  */
 class EventSubscribeError extends Error {
-  code: number;
+  declare code: number;
   constructor(message:string, code:number) {
     super(message);
     this.name = 'EventSubscribeError';
@@ -462,18 +462,18 @@ class Client extends EventEmitter {
     this.ws.send(encode(new EventUnsubscribe(name)));
   }
 
-  id:string;
-  address:string;
-  credentials: Object;
-  subscriptions: Set<string>;
-  eventSubscriptions: Map<string, Set<(...any) => void>>;
-  ws: WebSocket;
-  data:ObservedRemoveMap<string, any>;
-  timeoutDuration: number;
-  reconnectAttempts: number;
-  shouldReconnect: boolean;
-  reconnectAttemptResetTimeout: TimeoutID;
-  reconnectTimeout: TimeoutID;
+  declare id:string;
+  declare address:string;
+  declare credentials: Object;
+  declare subscriptions: Set<string>;
+  declare eventSubscriptions: Map<string, Set<(...any) => void>>;
+  declare ws: WebSocket;
+  declare data:ObservedRemoveMap<string, any>;
+  declare timeoutDuration: number;
+  declare reconnectAttempts: number;
+  declare shouldReconnect: boolean;
+  declare reconnectAttemptResetTimeout: TimeoutID;
+  declare reconnectTimeout: TimeoutID;
 }
 
 module.exports = Client;

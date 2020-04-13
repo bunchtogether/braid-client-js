@@ -50,8 +50,8 @@ Class representing a credentials error
 
 #### Parameters
 
--   `message` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** 
--   `code` **[number](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Number)** 
+-   `message`  
+-   `code`  
 
 ### SubscribeError
 
@@ -61,8 +61,8 @@ Class representing a subscribe error
 
 #### Parameters
 
--   `message` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** 
--   `code` **[number](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Number)** 
+-   `message`  
+-   `code`  
 
 ### EventSubscribeError
 
@@ -72,8 +72,8 @@ Class representing an event subscribe error
 
 #### Parameters
 
--   `message` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** 
--   `code` **[number](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Number)** 
+-   `message`  
+-   `code`  
 
 ### Client
 
@@ -154,7 +154,7 @@ Subscribe to a server event
 ##### Parameters
 
 -   `name` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** Name of the event to listen for
--   `callback` **function (): void** 
+-   `callback`  
 
 Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 
 
@@ -175,6 +175,6 @@ Unsubscribe from a server event. If the callback parameter is not provided, all 
 ##### Parameters
 
 -   `name` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** Name of the event to stop listening
--   `callback` **function (any): void** 
+-   `callback`  
 
 Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)&lt;void>** 

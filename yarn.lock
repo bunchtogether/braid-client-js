@@ -1873,11 +1873,6 @@ babelify@^10.0.0:
   resolved "https://registry.yarnpkg.com/babelify/-/babelify-10.0.0.tgz#fe73b1a22583f06680d8d072e25a1e0d1d1d7fb5"
   integrity sha512-X40FaxyH7t3X+JFAKvb1H9wooWKLRCi8pg3m8poqtdZaIng+bjzp9RvKQCvRjF9isHiPkXspbbXT/zwXLtwgwg==
 
-babylon@^6.15.0:
-  version "6.18.0"
-  resolved "https://registry.yarnpkg.com/babylon/-/babylon-6.18.0.tgz#af2f3b88fa6f5c1e4c634d1a0f8eac4f55b395e3"
-  integrity sha512-q/UEjfGJ2Cm3oKV71DJz9d25TPnq5rhBVL2Q4fA5wcC3jcrdn7+SssEybFIxwAvvP+YCsCYNKughoF33GxgycQ==
-
 bail@^1.0.0:
   version "1.0.5"
   resolved "https://registry.yarnpkg.com/bail/-/bail-1.0.5.tgz#b6fa133404a392cbc1f8c4bf63f5953351e7a776"
@@ -3427,14 +3422,6 @@ flow-parser@^0.122.0:
   resolved "https://registry.yarnpkg.com/flow-parser/-/flow-parser-0.122.0.tgz#f8258ba4200b2bec66c18ce00a323e3330e42b1a"
   integrity sha512-rb4pLIb7JAWn4dnO+fB9YLTUOM0SvY1ZN2yeu2NOyL7f2JeXBp9Nevqf+h4OluQcdI+9CnGa/if/HUy1YOX0dA==
 
-flow-remove-types@^1.2.1:
-  version "1.2.3"
-  resolved "https://registry.yarnpkg.com/flow-remove-types/-/flow-remove-types-1.2.3.tgz#6131aefc7da43364bb8b479758c9dec7735d1a18"
-  integrity sha512-ypq/U3V+t9atYiOuSJd40tekCra03EHKoRsiK/wXGrsZimuum0kdwVY7Yv0HTaoXgHW1WiayomYd+Q3kkvPl9Q==
-  dependencies:
-    babylon "^6.15.0"
-    vlq "^0.2.1"
-
 flow-remove-types@^2.122.0:
   version "2.122.0"
   resolved "https://registry.yarnpkg.com/flow-remove-types/-/flow-remove-types-2.122.0.tgz#abf2a51c8b80a09010eb1ac0c7d0646abeb208d1"
@@ -4565,13 +4552,6 @@ jest-environment-node@^25.3.0:
     jest-util "^25.3.0"
     semver "^6.3.0"
 
-jest-flow-transform@^1.0.1:
-  version "1.0.1"
-  resolved "https://registry.yarnpkg.com/jest-flow-transform/-/jest-flow-transform-1.0.1.tgz#2e0d73a8856924afc5710b6ab662898ae70651ec"
-  integrity sha1-Lg1zqIVpJK/FcQtqtmKJiucGUew=
-  dependencies:
-    flow-remove-types "^1.2.1"
-
 jest-get-type@^25.2.6:
   version "25.2.6"
   resolved "https://registry.yarnpkg.com/jest-get-type/-/jest-get-type-25.2.6.tgz#0b0a32fab8908b44d508be81681487dbabb8d877"
@@ -5533,7 +5513,7 @@ node-releases@^1.1.53:
   resolved "https://registry.yarnpkg.com/node-releases/-/node-releases-1.1.53.tgz#2d821bfa499ed7c5dffc5e2f28c88e78a08ee3f4"
   integrity sha512-wp8zyQVwef2hpZ/dJH7SfSrIPD6YoJz6BDQDpGEkcA0s3LpAQoxBIYmfIq6QAhC1DhwsyCgTaTTcONwX8qzCuQ==
 
-node-rsa@^1.0.5:
+node-rsa@^1.0.8:
   version "1.0.8"
   resolved "https://registry.yarnpkg.com/node-rsa/-/node-rsa-1.0.8.tgz#29a4517380f3272cd2073ff4d4c1ca44127ea4ad"
   integrity sha512-q8knkMHEqViIX/fshOltCHTtlt4Nw5wpBpu0//LB1tkxqYZB/001dYMwbPvTPiENwKvPqVDkhxK6J4fV09oa7w==
@@ -5730,14 +5710,14 @@ object.values@^1.1.0, object.values@^1.1.1:
     function-bind "^1.1.1"
     has "^1.0.3"
 
-observed-remove@^2.2.7:
-  version "2.2.7"
-  resolved "https://registry.yarnpkg.com/observed-remove/-/observed-remove-2.2.7.tgz#aee214ba55f0f653b271c6fdd48469e080f1f95f"
-  integrity sha512-B3zoHQF6sD/NzqyP3O97GXrO0AZIhmOFrQpcdZCrt+w/QF6jMpI/1jur5/Zq9GFTxV5g+JIhaJpjKvObTeFgUw==
+observed-remove@^2.2.26:
+  version "2.2.26"
+  resolved "https://registry.yarnpkg.com/observed-remove/-/observed-remove-2.2.26.tgz#ceb4f5ef568acdb1665e2546828e1d0d1f71bf62"
+  integrity sha512-/pmsriAQlYgRzJNkdWaSboyOHwVRzCWjgrrNwlHwRXZsZ26rzZIv0HFavkFRkNRn2GxL2goq14lXTPNRc3nIIw==
   dependencies:
     "@bunchtogether/hash-object" "^1.0.3"
     json-stringify-deterministic "^1.0.1"
-    node-rsa "^1.0.5"
+    node-rsa "^1.0.8"
 
 octokit-pagination-methods@^1.1.0:
   version "1.1.0"
