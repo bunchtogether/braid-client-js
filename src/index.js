@@ -19,6 +19,16 @@ const {
 } = require('@bunchtogether/braid-messagepack');
 
 /**
+ * Class representing a connection error
+ */
+class ConnectionError extends Error {
+  constructor(message:string) {
+    super(message);
+    this.name = 'ConnectionError';
+  }
+}
+
+/**
  * Class representing a credentials error
  */
 class CredentialsError extends Error {
@@ -177,7 +187,7 @@ class Client extends EventEmitter {
     };
 
     ws.onerror = () => {
-      this.emit('error', new Error(`Websocket error when connecting to ${this.address}, check the 'close' event for additional details`));
+      this.emit('error', new ConnectionError(`Websocket error when connecting to ${this.address}, check the 'close' event for additional details`));
     };
 
     await new Promise((resolve, reject) => {
