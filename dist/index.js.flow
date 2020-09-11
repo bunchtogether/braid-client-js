@@ -16,6 +16,10 @@ const {
   EventSubscribeResponse,
   EventUnsubscribe,
   BraidEvent,
+  PublishRequest,
+  PublishResponse,
+  PublisherMessage,
+  Unpublish,
 } = require('@bunchtogether/braid-messagepack');
 
 /**
@@ -64,6 +68,20 @@ class EventSubscribeError extends Error {
   }
 }
 
+
+/**
+ * Class representing an publishing error
+ */
+class PublishError extends Error {
+  declare code: number;
+  constructor(message:string, code:number) {
+    super(message);
+    this.name = 'PublishError';
+    this.code = code;
+  }
+}
+
+
 /**
  * Class representing a Braid Client
  */
@@ -82,9 +100,11 @@ class Client extends EventEmitter {
     this.data = new ObservedRemoveMap([], { bufferPublishing: 0 });
     this.timeoutDuration = 5000;
     this.subscriptions = new Set();
+    this.receivers = new Set();
     this.eventSubscriptions = new Map();
     this.setMaxListeners(0);
     this.reconnectAttempts = 0;
+    this.publishQueueMap = new Map();
   }
 
   /**
@@ -175,6 +195,8 @@ class Client extends EventEmitter {
         this.emit('subscribeResponse', message.value.key, message.value.success, message.value.code, message.value.message);
       } else if (message instanceof EventSubscribeResponse) {
         this.emit('eventSubscribeResponse', message.value.name, message.value.success, message.value.code, message.value.message);
+      } else if (message instanceof PublishResponse) {
+        this.emit('publishResponse', message.value.key, message.value.success, message.value.code, message.value.message);
       } else if (message instanceof BraidEvent) {
         const callbacks = this.eventSubscriptions.get(message.name);
         if (!callbacks) {
@@ -237,6 +259,13 @@ class Client extends EventEmitter {
     for (const name of this.eventSubscriptions.keys()) {
       subscriptionPromises.push(this.sendEventSubscribeRequest(name).catch((error) => {
         console.log(`Error subscribing to event ${name}: ${error.message}`);
+        this.emit('error', error);
+      }));
+    }
+
+    for (const name of this.receivers.keys()) {
+      subscriptionPromises.push(this.startPublishing(name).catch((error) => {
+        console.log(`Error when starting publishing to receiver ${name}: ${error.message}`);
         this.emit('error', error);
       }));
     }
@@ -472,10 +501,104 @@ class Client extends EventEmitter {
     this.ws.send(encode(new EventUnsubscribe(name)));
   }
 
+  /**
+   * Start publishing to a receiver
+   * @param {string} name Name of the receiver to start publishing to
+   * @return {Promise<void>}
+   */
+  async startPublishing(name: string) {
+    if (this.receivers.has(name)) {
+      return;
+    }
+    this.receivers.add(name);
+    if (this.ws) {
+      try {
+        await this.sendPublishRequest(name);
+      } catch (error) {
+        this.stopPublishing(name);
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Publish message to a receiver
+   * @param {string} name Name of the receiver
+   * @param {any} message Value to publish, should not contain undefined values
+   * @return {Promise<void>}
+   */
+  publish(name: string, message: any) {
+    if (!this.receivers.has(name)) {
+      throw new Error('Receiver does not exist, call startPublishing()');
+    }
+    if (typeof message === 'undefined') {
+      throw new Error('Unable to publish undefined values');
+    }
+    if (this.ws) {
+      this.ws.send(encode(new PublisherMessage(name, message)));
+    } else {
+      const publishQueue = this.publishQueueMap.get(name) || [];
+      publishQueue.push(message);
+      this.publishQueueMap.set(name, publishQueue);
+    }
+  }
+
+  /**
+   * Send event subscribe request to server
+   * @param {string} name Name of the event to listen for
+   * @return {Promise<void>}
+   */
+  async sendPublishRequest(name: string) {
+    const responsePromise = new Promise((resolve, reject) => {
+      const handlePublishResponse = (n, success, code, message) => {
+        if (n !== name) {
+          return;
+        }
+        clearTimeout(timeout);
+        this.removeListener('publishResponse', handlePublishResponse);
+        const publishQueue = this.publishQueueMap.get(name) || [];
+        while (publishQueue.length > 0) {
+          this.publish(name, publishQueue.shift());
+        }
+        this.publishQueueMap.delete(name);
+        if (success === true) {
+          resolve();
+        } else {
+          reject(new PublishError(message, code));
+        }
+      };
+      const timeout = setTimeout(() => {
+        this.removeListener('publishResponse', handlePublishResponse);
+        reject(new PublishError(`Publish response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504));
+      }, this.timeoutDuration);
+      this.on('publishResponse', handlePublishResponse);
+    });
+    this.ws.send(encode(new PublishRequest(name)));
+    await responsePromise;
+  }
+
+  /**
+   * Stop publishing to a receiver.
+   * @param {string} name Name of the receiver to stop publishing to
+   * @param {(...any) => void} [callback] Callback
+   * @return {Promise<void>}
+   */
+  stopPublishing(name: string) {
+    if (!this.receivers.has(name)) {
+      return;
+    }
+    this.receivers.delete(name);
+    if (!this.ws) {
+      return;
+    }
+    this.ws.send(encode(new Unpublish(name)));
+  }
+
   declare id:string;
   declare address:string;
   declare credentials: Object;
   declare subscriptions: Set<string>;
+  declare receivers: Set<string>;
   declare eventSubscriptions: Map<string, Set<(...any) => void>>;
   declare ws: WebSocket;
   declare data:ObservedRemoveMap<string, any>;
@@ -484,6 +607,7 @@ class Client extends EventEmitter {
   declare shouldReconnect: boolean;
   declare reconnectAttemptResetTimeout: TimeoutID;
   declare reconnectTimeout: TimeoutID;
+  declare publishQueueMap: Map<string, Array<any>>;
 }
 
 module.exports = Client;
