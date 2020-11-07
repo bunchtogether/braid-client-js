@@ -49,8 +49,10 @@ class CredentialsError extends Error {
  */
 class SubscribeError extends Error {
                        
-  constructor(message       , code       ) {
+                          
+  constructor(itemKey        , message       , code       ) {
     super(message);
+    this.itemKey = itemKey;
     this.name = 'SubscribeError';
     this.code = code;
   }
@@ -61,8 +63,10 @@ class SubscribeError extends Error {
  */
 class EventSubscribeError extends Error {
                        
-  constructor(message       , code       ) {
+                           
+  constructor(itemName        , message       , code       ) {
     super(message);
+    this.itemName = itemName;
     this.name = 'EventSubscribeError';
     this.code = code;
   }
@@ -74,8 +78,10 @@ class EventSubscribeError extends Error {
  */
 class PublishError extends Error {
                        
-  constructor(message       , code       ) {
+                           
+  constructor(itemName        , message       , code       ) {
     super(message);
+    this.itemName = itemName;
     this.name = 'PublishError';
     this.code = code;
   }
@@ -98,13 +104,16 @@ class Client extends EventEmitter {
      * @public
      */
     this.data = new ObservedRemoveMap([], { bufferPublishing: 0 });
-    this.timeoutDuration = 5000;
+    this.timeoutDuration = 60000;
     this.subscriptions = new Set();
     this.receivers = new Set();
     this.eventSubscriptions = new Map();
     this.setMaxListeners(0);
     this.reconnectAttempts = 0;
     this.publishQueueMap = new Map();
+    this.subscribeRequestPromises = new Map();
+    this.eventSubscribeRequestPromises = new Map();
+    this.publishRequestPromises = new Map();
   }
 
   /**
@@ -242,35 +251,32 @@ class Client extends EventEmitter {
     if (credentials) {
       await this.sendCredentials(credentials);
     } else {
-      await this.sendSubscribeRequests();
+      await this.sendRequests();
     }
   }
 
-  async sendSubscribeRequests() {
-    const subscriptionPromises = [];
+  async sendRequests() {
+    const promises = [];
 
     for (const key of this.subscriptions) {
-      subscriptionPromises.push(this.sendSubscribeRequest(key).catch((error) => {
-        console.log(`Error subscribing to ${key}: ${error.message}`);
+      promises.push(this.sendSubscribeRequest(key).catch((error) => {
         this.emit('error', error);
       }));
     }
 
     for (const name of this.eventSubscriptions.keys()) {
-      subscriptionPromises.push(this.sendEventSubscribeRequest(name).catch((error) => {
-        console.log(`Error subscribing to event ${name}: ${error.message}`);
+      promises.push(this.sendEventSubscribeRequest(name).catch((error) => {
         this.emit('error', error);
       }));
     }
 
-    for (const name of this.receivers.keys()) {
-      subscriptionPromises.push(this.startPublishing(name).catch((error) => {
-        console.log(`Error when starting publishing to receiver ${name}: ${error.message}`);
+    for (const name of this.receivers) {
+      promises.push(this.sendPublishRequest(name).catch((error) => {
         this.emit('error', error);
       }));
     }
 
-    await Promise.all(subscriptionPromises);
+    await Promise.all(promises);
   }
 
   reconnect() {
@@ -354,7 +360,7 @@ class Client extends EventEmitter {
 
     await responsePromise;
 
-    await this.sendSubscribeRequests();
+    await this.sendRequests();
   }
 
   /**
@@ -364,16 +370,51 @@ class Client extends EventEmitter {
    * @return {Promise<void>}
    */
   async subscribe(key        ) {
-    if (!this.subscriptions.has(key)) {
+    if (!this.ws) {
       this.subscriptions.add(key);
-      if (this.ws) {
-        try {
-          await this.sendSubscribeRequest(key);
-        } catch (error) {
+      await new Promise((resolve, reject) => {
+        const handleError = (error                       ) => {
+          if (error instanceof SubscribeError) {
+            if (error.itemKey !== key) {
+              return;
+            }
+          }
+          if (error instanceof PublishError || error instanceof EventSubscribeError) {
+            return;
+          }
+          this.removeListener('error', handleError);
+          this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
           this.unsubscribe(key);
-          throw error;
-        }
-      }
+          reject(error);
+        };
+        const handleSubscribeRequestSuccess = (k       ) => {
+          if (k !== key) {
+            return;
+          }
+          this.removeListener('error', handleError);
+          this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
+          resolve();
+        };
+        this.on('error', handleError);
+        this.on('subscribeRequestSuccess', handleSubscribeRequestSuccess);
+      });
+      return;
+    }
+    const promise = this.subscribeRequestPromises.get(key);
+    if (promise) { // The subscription already exists has not been verified
+      await promise;
+      return;
+    }
+    // The subscription exists and has been verified
+    if (this.subscriptions.has(key)) {
+      return;
+    }
+    this.subscriptions.add(key);
+    try {
+      await this.sendSubscribeRequest(key);
+    } catch (error) {
+      this.unsubscribe(key);
+      throw error;
     }
   }
 
@@ -382,7 +423,22 @@ class Client extends EventEmitter {
    * @param {string} key Key to request updates on
    * @return {Promise<void>}
    */
-  async sendSubscribeRequest(key        ) {
+  sendSubscribeRequest(key        ) {
+    let promise = this.subscribeRequestPromises.get(key);
+    if (promise) {
+      return promise;
+    }
+    promise = this._sendSubscribeRequest(key); // eslint-disable-line no-underscore-dangle
+    this.subscribeRequestPromises.set(key, promise);
+    promise.then(() => {
+      this.subscribeRequestPromises.delete(key);
+    }).catch(() => {
+      this.subscribeRequestPromises.delete(key);
+    });
+    return promise;
+  }
+
+  async _sendSubscribeRequest(key        ) {
     const responsePromise = new Promise((resolve, reject) => {
       const handleSubscribeResponse = (k, success, code, message) => {
         if (k !== key) {
@@ -391,14 +447,17 @@ class Client extends EventEmitter {
         clearTimeout(timeout);
         this.removeListener('subscribeResponse', handleSubscribeResponse);
         if (success === true) {
+          this.emit('subscribeRequestSuccess', key);
           resolve();
         } else {
-          reject(new SubscribeError(message, code));
+          const error = new SubscribeError(key, message, code);
+          reject(error);
         }
       };
       const timeout = setTimeout(() => {
         this.removeListener('subscribeResponse', handleSubscribeResponse);
-        reject(new SubscribeError(`Subscription response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504));
+        const error = new SubscribeError(key, `Subscription response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+        reject(error);
       }, this.timeoutDuration);
       this.on('subscribeResponse', handleSubscribeResponse);
     });
@@ -431,20 +490,62 @@ class Client extends EventEmitter {
    */
   async addServerEventListener(name        , callback                  ) {
     let callbacks = this.eventSubscriptions.get(name);
+    if (!this.ws) {
+      if (!callbacks) {
+        callbacks = new Set();
+        this.eventSubscriptions.set(name, callbacks);
+      }
+      callbacks.add(callback);
+      await new Promise((resolve, reject) => {
+        const handleError = (error                            ) => {
+          if (error instanceof EventSubscribeError) {
+            if (error.itemName !== name) {
+              return;
+            }
+          }
+          if (error instanceof SubscribeError || error instanceof PublishError) {
+            return;
+          }
+          this.removeListener('error', handleError);
+          this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
+          this.removeServerEventListener(name, callback);
+          reject(error);
+        };
+        const handleEventSubscribeRequestSuccess = (n       ) => {
+          if (n !== name) {
+            return;
+          }
+          this.removeListener('error', handleError);
+          this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
+          resolve();
+        };
+        this.on('error', handleError);
+        this.on('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
+      });
+      return;
+    }
+    // The event subscription exists
     if (callbacks) {
       callbacks.add(callback);
+      const promise = this.eventSubscribeRequestPromises.get(name);
+      if (promise) { // The event subscription already exists has not been verified
+        try {
+          await promise;
+        } catch (error) {
+          this.removeServerEventListener(name, callback);
+          throw error;
+        }
+      }
       return;
     }
     callbacks = new Set();
     callbacks.add(callback);
     this.eventSubscriptions.set(name, callbacks);
-    if (this.ws) {
-      try {
-        await this.sendEventSubscribeRequest(name);
-      } catch (error) {
-        this.removeServerEventListener(name, callback);
-        throw error;
-      }
+    try {
+      await this.sendEventSubscribeRequest(name);
+    } catch (error) {
+      this.removeServerEventListener(name, callback);
+      throw error;
     }
   }
 
@@ -453,7 +554,22 @@ class Client extends EventEmitter {
    * @param {string} name Name of the event to listen for
    * @return {Promise<void>}
    */
-  async sendEventSubscribeRequest(name        ) {
+  sendEventSubscribeRequest(name        ) {
+    let promise = this.eventSubscribeRequestPromises.get(name);
+    if (promise) {
+      return promise;
+    }
+    promise = this._sendEventSubscribeRequest(name); // eslint-disable-line no-underscore-dangle
+    this.eventSubscribeRequestPromises.set(name, promise);
+    promise.then(() => {
+      this.eventSubscribeRequestPromises.delete(name);
+    }).catch(() => {
+      this.eventSubscribeRequestPromises.delete(name);
+    });
+    return promise;
+  }
+
+  async _sendEventSubscribeRequest(name        ) {
     const responsePromise = new Promise((resolve, reject) => {
       const handleEventSubscribeResponse = (n, success, code, message) => {
         if (n !== name) {
@@ -462,14 +578,17 @@ class Client extends EventEmitter {
         clearTimeout(timeout);
         this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
         if (success === true) {
+          this.emit('eventSubscribeRequestSuccess', name);
           resolve();
         } else {
-          reject(new EventSubscribeError(message, code));
+          const error = new EventSubscribeError(name, message, code);
+          reject(error);
         }
       };
       const timeout = setTimeout(() => {
         this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
-        reject(new EventSubscribeError(`Event subscription response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504));
+        const error = new EventSubscribeError(name, `Event subscription response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+        reject(error);
       }, this.timeoutDuration);
       this.on('eventSubscribeResponse', handleEventSubscribeResponse);
     });
@@ -507,17 +626,51 @@ class Client extends EventEmitter {
    * @return {Promise<void>}
    */
   async startPublishing(name        ) {
+    if (!this.ws) {
+      this.receivers.add(name);
+      await new Promise((resolve, reject) => {
+        const handleError = (error                     ) => {
+          if (error instanceof PublishError) {
+            if (error.itemName !== name) {
+              return;
+            }
+          }
+          if (error instanceof SubscribeError || error instanceof EventSubscribeError) {
+            return;
+          }
+          this.removeListener('error', handleError);
+          this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
+          this.stopPublishing(name);
+          reject(error);
+        };
+        const handlePublishRequestSuccess = (n       ) => {
+          if (n !== name) {
+            return;
+          }
+          this.removeListener('error', handleError);
+          this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
+          resolve();
+        };
+        this.on('error', handleError);
+        this.on('publishRequestSuccess', handlePublishRequestSuccess);
+      });
+      return;
+    }
+    const promise = this.publishRequestPromises.get(name);
+    if (promise) { // The publish request already exists has not been verified
+      await promise;
+      return;
+    }
+    // The receiver/publisher exists and has been verified
     if (this.receivers.has(name)) {
       return;
     }
     this.receivers.add(name);
-    if (this.ws) {
-      try {
-        await this.sendPublishRequest(name);
-      } catch (error) {
-        this.stopPublishing(name);
-        throw error;
-      }
+    try {
+      await this.sendPublishRequest(name);
+    } catch (error) {
+      this.stopPublishing(name);
+      throw error;
     }
   }
 
@@ -548,7 +701,23 @@ class Client extends EventEmitter {
    * @param {string} name Name of the event to listen for
    * @return {Promise<void>}
    */
-  async sendPublishRequest(name        ) {
+
+  sendPublishRequest(name        ) {
+    let promise = this.publishRequestPromises.get(name);
+    if (promise) {
+      return promise;
+    }
+    promise = this._sendPublishRequest(name); // eslint-disable-line no-underscore-dangle
+    this.publishRequestPromises.set(name, promise);
+    promise.then(() => {
+      this.publishRequestPromises.delete(name);
+    }).catch(() => {
+      this.publishRequestPromises.delete(name);
+    });
+    return promise;
+  }
+
+  async _sendPublishRequest(name        ) {
     const responsePromise = new Promise((resolve, reject) => {
       const handlePublishResponse = (n, success, code, message) => {
         if (n !== name) {
@@ -556,20 +725,23 @@ class Client extends EventEmitter {
         }
         clearTimeout(timeout);
         this.removeListener('publishResponse', handlePublishResponse);
-        const publishQueue = this.publishQueueMap.get(name) || [];
-        while (publishQueue.length > 0) {
-          this.publish(name, publishQueue.shift());
-        }
-        this.publishQueueMap.delete(name);
         if (success === true) {
+          this.emit('publishRequestSuccess', name);
+          const publishQueue = this.publishQueueMap.get(name) || [];
+          while (publishQueue.length > 0) {
+            this.publish(name, publishQueue.shift());
+          }
+          this.publishQueueMap.delete(name);
           resolve();
         } else {
-          reject(new PublishError(message, code));
+          const error = new PublishError(name, message, code);
+          reject(error);
         }
       };
       const timeout = setTimeout(() => {
         this.removeListener('publishResponse', handlePublishResponse);
-        reject(new PublishError(`Publish response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504));
+        const error = new PublishError(name, `Publish response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+        reject(error);
       }, this.timeoutDuration);
       this.on('publishResponse', handlePublishResponse);
     });
@@ -608,6 +780,9 @@ class Client extends EventEmitter {
                                                   
                                       
                                                    
+                                                               
+                                                                    
+                                                             
 }
 
 module.exports = Client;
