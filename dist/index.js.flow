@@ -114,6 +114,16 @@ class Client extends EventEmitter {
     this.subscribeRequestPromises = new Map();
     this.eventSubscribeRequestPromises = new Map();
     this.publishRequestPromises = new Map();
+    this.setReconnectHandler(() => true);
+  }
+
+  /**
+   * Set the reconnect handler. The handler determines if the reconnect should continue.
+   * @param {(credentials: Object) => boolean} func - Credentials handler.
+   * @return {void}
+   */
+  setReconnectHandler(func: (Object) => boolean) { // eslint-disable-line no-unused-vars
+    this.reconnectHandler = func;
   }
 
   /**
@@ -280,9 +290,11 @@ class Client extends EventEmitter {
   }
 
   reconnect() {
-    if (!this.shouldReconnect) {
+    if (!this.shouldReconnect || this.reconnectHandler(this.credentials) === false) {
+      this.emit('reconnect', false);
       return;
     }
+    this.emit('reconnect', true);
     clearTimeout(this.reconnectTimeout);
     clearTimeout(this.reconnectAttemptResetTimeout);
     this.reconnectAttempts += 1;
@@ -779,6 +791,7 @@ class Client extends EventEmitter {
   declare shouldReconnect: boolean;
   declare reconnectAttemptResetTimeout: TimeoutID;
   declare reconnectTimeout: TimeoutID;
+  declare reconnectHandler: (Object) => boolean;
   declare publishQueueMap: Map<string, Array<any>>;
   declare subscribeRequestPromises: Map<string, Promise<void>>;
   declare eventSubscribeRequestPromises: Map<string, Promise<void>>;
