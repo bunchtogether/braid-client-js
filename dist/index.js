@@ -21,6 +21,15 @@ const {
   PublisherMessage,
   Unpublish,
 } = require('@bunchtogether/braid-messagepack');
+const baseLogger = require('./logger');
+
+               
+                                           
+                                          
+                                          
+                                           
+                                                
+  
 
 /**
  * Class representing a connection error
@@ -115,6 +124,7 @@ class Client extends EventEmitter {
     this.eventSubscribeRequestPromises = new Map();
     this.publishRequestPromises = new Map();
     this.setReconnectHandler(() => true);
+    this.logger = baseLogger;
   }
 
   /**
@@ -136,6 +146,8 @@ class Client extends EventEmitter {
     if (this.ws) {
       throw new Error(`Connection to ${this.address} already open`);
     }
+
+    clearTimeout(this.reconnectTimeout);
 
     this.shouldReconnect = true;
     this.address = address;
@@ -196,8 +208,11 @@ class Client extends EventEmitter {
           calculatedReason = '';
         }
       }
-
-      console.log(`${wasClean ? 'Cleanly' : 'Uncleanly'} closed websocket connection to Braid server at ${this.address} with code ${code}${calculatedReason ? `: ${calculatedReason}` : ''}`);
+      if (wasClean) {
+        this.logger.warn(`Cleanly closed websocket connection to Braid server at ${this.address} with code ${code}${calculatedReason ? `: ${calculatedReason}` : ''}`);
+      } else {
+        this.logger.warn(`Uncleanly closed websocket connection to Braid server at ${this.address} with code ${code}${calculatedReason ? `: ${calculatedReason}` : ''}`);
+      }
       delete this.ws;
       this.emit('close', code, reason);
       this.reconnect();
@@ -238,7 +253,7 @@ class Client extends EventEmitter {
         try {
           ws.close(1011, `Timeout after ${this.timeoutDuration * 2}`);
         } catch (error) {
-          console.log(`Unable to close connection to ${this.address}: ${error.message}`);
+          this.logger.error(`Unable to close connection to ${this.address}: ${error.message}`);
         }
         reject(new Error(`Timeout when opening connection to ${this.address}`));
       }, this.timeoutDuration * 2);
@@ -256,7 +271,7 @@ class Client extends EventEmitter {
       this.once('open', onOpen);
     });
 
-    console.log(`Opened websocket connection to Braid server at ${this.address}`);
+    this.logger.info(`Opened websocket connection to Braid server at ${this.address}`);
 
     if (credentials) {
       await this.sendCredentials(credentials);
@@ -290,22 +305,31 @@ class Client extends EventEmitter {
   }
 
   reconnect() {
-    if (!this.shouldReconnect || this.reconnectHandler(this.credentials) === false) {
+    if (!this.shouldReconnect) {
       this.emit('reconnect', false);
       return;
     }
-    this.emit('reconnect', true);
     clearTimeout(this.reconnectTimeout);
     clearTimeout(this.reconnectAttemptResetTimeout);
     this.reconnectAttempts += 1;
     clearTimeout(this.reconnectAttemptResetTimeout);
     const duration = this.reconnectAttempts > 5 ? 25000 + Math.round(Math.random() * 10000) : this.reconnectAttempts * this.reconnectAttempts * 1000;
-    console.log(`Reconnect attempt ${this.reconnectAttempts} in ${Math.round(duration / 100) / 10} seconds`);
+    this.logger.warn(`Reconnect attempt ${this.reconnectAttempts} in ${Math.round(duration / 100) / 10} seconds`);
     this.reconnectTimeout = setTimeout(async () => {
+      clearTimeout(this.reconnectAttemptResetTimeout);
+      const shouldReconnect = this.reconnectHandler(this.credentials);
+      this.emit('reconnect', shouldReconnect !== false);
+      if (shouldReconnect === false) {
+        this.logger.warn(`Reconnect attempt ${this.reconnectAttempts} cancelled by reconnect handler`);
+        this.shouldReconnect = false;
+        return;
+      }
+      this.logger.warn(`Reconnect attempt ${this.reconnectAttempts}`);
+
       try {
         await this.open(this.address, this.credentials);
       } catch (error) {
-        console.log(`Reconnect attempt ${this.reconnectAttempts} failed: ${error.message}`);
+        this.logger.error(`Reconnect attempt ${this.reconnectAttempts} failed: ${error.message}`);
         this.emit('error', error);
       }
       this.reconnectAttemptResetTimeout = setTimeout(() => {
@@ -779,6 +803,7 @@ class Client extends EventEmitter {
   }
 
                     
+                         
                          
                               
                                      
