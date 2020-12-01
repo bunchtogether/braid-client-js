@@ -96,6 +96,20 @@ class PublishError extends Error {
   }
 }
 
+/**
+ * Class representing an error that interupts a pending server
+ * request, for example if a connection closes prematurely
+ */
+class ServerRequestError extends Error {
+                       
+  constructor(message       , code       ) {
+    super(message);
+    this.name = 'ServerRequestError';
+    this.code = code;
+  }
+}
+
+const isTransactionError = (error      ) => (error instanceof SubscribeError) || (error instanceof EventSubscribeError) || (error instanceof PublishError);
 
 /**
  * Class representing a Braid Client
@@ -248,8 +262,9 @@ class Client extends EventEmitter {
 
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        this.removeListener('error', onError);
-        this.removeListener('open', onOpen);
+        this.removeListener('open', handleOpen);
+        this.removeListener('error', handleError);
+        this.removeListener('close', handleClose);
         try {
           ws.close(1011, `Timeout after ${this.timeoutDuration * 2}`);
         } catch (error) {
@@ -257,18 +272,34 @@ class Client extends EventEmitter {
         }
         reject(new Error(`Timeout when opening connection to ${this.address}`));
       }, this.timeoutDuration * 2);
-      const onOpen = () => {
+      const handleOpen = () => {
         clearTimeout(timeout);
-        this.removeListener('error', onError);
+        this.removeListener('open', handleOpen);
+        this.removeListener('error', handleError);
+        this.removeListener('close', handleClose);
         resolve();
       };
-      const onError = (error      ) => {
+      const handleError = (error      ) => {
+        if (isTransactionError(error)) {
+          return;
+        }
         clearTimeout(timeout);
-        this.removeListener('open', onOpen);
+        this.removeListener('open', handleOpen);
+        this.removeListener('error', handleError);
+        this.removeListener('close', handleClose);
         reject(error);
       };
-      this.once('error', onError);
-      this.once('open', onOpen);
+      const handleClose = () => {
+        clearTimeout(timeout);
+        this.removeListener('open', handleOpen);
+        this.removeListener('error', handleError);
+        this.removeListener('close', handleClose);
+        this.logger.error('Connection closed before an open event was received');
+        reject(new ServerRequestError('Connection closed before an open event was received', 502));
+      };
+      this.on('open', handleOpen);
+      this.on('error', handleError);
+      this.on('close', handleClose);
     });
 
     this.logger.info(`Opened websocket connection to Braid server at ${this.address}`);
@@ -325,7 +356,6 @@ class Client extends EventEmitter {
         return;
       }
       this.logger.warn(`Reconnect attempt ${this.reconnectAttempts}`);
-
       try {
         await this.open(this.address, this.credentials);
       } catch (error) {
@@ -352,16 +382,28 @@ class Client extends EventEmitter {
       return;
     }
     await new Promise((resolve, reject) => {
-      const onClose = () => {
-        this.removeListener('error', onError);
+      const handleClose = () => {
+        clearTimeout(timeout);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
         resolve();
       };
-      const onError = (error       ) => {
-        this.removeListener('close', onClose);
+      const handleError = (error       ) => {
+        if (isTransactionError(error)) {
+          return;
+        }
+        clearTimeout(timeout);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
         reject(error);
       };
-      this.once('error', onError);
-      this.once('close', onClose);
+      this.on('close', handleClose);
+      this.on('error', handleError);
+      const timeout = setTimeout(() => {
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        reject(new ConnectionError(`Did not receive a close event after ${this.timeoutDuration * 2 / 1000} seconds`));
+      }, this.timeoutDuration * 2);
       this.ws.close(code, reason);
     });
   }
@@ -380,17 +422,42 @@ class Client extends EventEmitter {
       const handleCredentialsResponse = (success, code, message) => {
         clearTimeout(timeout);
         this.removeListener('credentialsResponse', handleCredentialsResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
         if (success === true) {
           resolve();
         } else {
           reject(new CredentialsError(message, code));
         }
       };
+      const handleClose = () => {
+        clearTimeout(timeout);
+        this.removeListener('credentialsResponse', handleCredentialsResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        this.logger.error('Connection closed before a credentials response was received');
+        reject(new ServerRequestError('Connection closed before a credentials response was received', 502));
+      };
+      const handleError = (error      ) => {
+        if (isTransactionError(error)) {
+          return;
+        }
+        clearTimeout(timeout);
+        this.removeListener('credentialsResponse', handleCredentialsResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        this.logger.error(`Error received before a credentials response was received: ${error.message || 'Unkown error'}`);
+        reject(new ServerRequestError(`Error received before a credentials response was received: ${error.message || 'Unkown error'}`, 500));
+      };
       const timeout = setTimeout(() => {
         this.removeListener('credentialsResponse', handleCredentialsResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
         reject(new CredentialsError(`Credentials response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504));
       }, this.timeoutDuration);
       this.on('credentialsResponse', handleCredentialsResponse);
+      this.on('close', handleClose);
+      this.on('error', handleError);
     });
     this.ws.send(encode(new Credentials(credentials)));
 
@@ -482,6 +549,8 @@ class Client extends EventEmitter {
         }
         clearTimeout(timeout);
         this.removeListener('subscribeResponse', handleSubscribeResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
         if (success === true) {
           this.emit('subscribeRequestSuccess', key);
           resolve();
@@ -490,12 +559,35 @@ class Client extends EventEmitter {
           reject(error);
         }
       };
+      const handleClose = () => {
+        clearTimeout(timeout);
+        this.removeListener('subscribeResponse', handleSubscribeResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        this.logger.error('Connection closed before a subscription response was received');
+        reject(new ServerRequestError('Connection closed before a subscription response was received', 502));
+      };
+      const handleError = (error      ) => {
+        if (isTransactionError(error)) {
+          return;
+        }
+        clearTimeout(timeout);
+        this.removeListener('subscribeResponse', handleSubscribeResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        this.logger.error(`Error received before a subscription response was received: ${error.message || 'Unkown error'}`);
+        reject(new ServerRequestError(`Error received before a subscription response was received: ${error.message || 'Unkown error'}`, 500));
+      };
       const timeout = setTimeout(() => {
         this.removeListener('subscribeResponse', handleSubscribeResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
         const error = new SubscribeError(key, `Subscription response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
         reject(error);
       }, this.timeoutDuration);
       this.on('subscribeResponse', handleSubscribeResponse);
+      this.on('close', handleClose);
+      this.on('error', handleError);
     });
     this.ws.send(encode(new SubscribeRequest(key)));
     await responsePromise;
@@ -613,6 +705,8 @@ class Client extends EventEmitter {
         }
         clearTimeout(timeout);
         this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
         if (success === true) {
           this.emit('eventSubscribeRequestSuccess', name);
           resolve();
@@ -621,12 +715,35 @@ class Client extends EventEmitter {
           reject(error);
         }
       };
+      const handleClose = () => {
+        clearTimeout(timeout);
+        this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        this.logger.error('Connection closed before an event subscription response was received');
+        reject(new ServerRequestError('Connection closed before an event subscription response was received', 502));
+      };
+      const handleError = (error      ) => {
+        if (isTransactionError(error)) {
+          return;
+        }
+        clearTimeout(timeout);
+        this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        this.logger.error(`Error received before an event subscription response was received: ${error.message || 'Unkown error'}`);
+        reject(new ServerRequestError(`Error received before an event subscription response was received: ${error.message || 'Unkown error'}`, 500));
+      };
       const timeout = setTimeout(() => {
         this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
         const error = new EventSubscribeError(name, `Event subscription response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
         reject(error);
       }, this.timeoutDuration);
       this.on('eventSubscribeResponse', handleEventSubscribeResponse);
+      this.on('close', handleClose);
+      this.on('error', handleError);
     });
     this.ws.send(encode(new EventSubscribeRequest(name)));
     await responsePromise;
@@ -760,6 +877,8 @@ class Client extends EventEmitter {
           return;
         }
         clearTimeout(timeout);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
         this.removeListener('publishResponse', handlePublishResponse);
         if (success === true) {
           this.emit('publishRequestSuccess', name);
@@ -774,12 +893,35 @@ class Client extends EventEmitter {
           reject(error);
         }
       };
+      const handleClose = () => {
+        clearTimeout(timeout);
+        this.removeListener('publishResponse', handlePublishResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        this.logger.error('Connection closed before a publish response was received');
+        reject(new ServerRequestError('Connection closed before an publish response was received', 502));
+      };
+      const handleError = (error      ) => {
+        if (isTransactionError(error)) {
+          return;
+        }
+        clearTimeout(timeout);
+        this.removeListener('publishResponse', handlePublishResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        this.logger.error(`Error received before a publish response was received: ${error.message || 'Unkown error'}`);
+        reject(new ServerRequestError(`Error received before an publish response was received: ${error.message || 'Unkown error'}`, 500));
+      };
       const timeout = setTimeout(() => {
         this.removeListener('publishResponse', handlePublishResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
         const error = new PublishError(name, `Publish response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
         reject(error);
       }, this.timeoutDuration);
       this.on('publishResponse', handlePublishResponse);
+      this.on('close', handleClose);
+      this.on('error', handleError);
     });
     this.ws.send(encode(new PublishRequest(name)));
     await responsePromise;
