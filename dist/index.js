@@ -418,7 +418,7 @@ class Client extends EventEmitter {
     if (!this.ws) {
       return;
     }
-    const responsePromise = new Promise((resolve, reject) => {
+    this.credentialsResponsePromise = new Promise((resolve, reject) => {
       const handleCredentialsResponse = (success, code, message) => {
         clearTimeout(timeout);
         this.removeListener('credentialsResponse', handleCredentialsResponse);
@@ -461,7 +461,13 @@ class Client extends EventEmitter {
     });
     this.ws.send(encode(new Credentials(credentials)));
 
-    await responsePromise;
+    try {
+      await this.credentialsResponsePromise;
+      delete this.credentialsResponsePromise;
+    } catch (error) {
+      delete this.credentialsResponsePromise;
+      throw error;
+    }
 
     await this.sendRequests();
   }
@@ -542,6 +548,11 @@ class Client extends EventEmitter {
   }
 
   async _sendSubscribeRequest(key        ) {
+    if (this.credentialsResponsePromise) {
+      this.emit('subscribeRequestCredentialsCheck', key);
+      await this.credentialsResponsePromise;
+    }
+
     const responsePromise = new Promise((resolve, reject) => {
       const handleSubscribeResponse = (k, success, code, message) => {
         if (k !== key) {
@@ -698,6 +709,11 @@ class Client extends EventEmitter {
   }
 
   async _sendEventSubscribeRequest(name        ) {
+    if (this.credentialsResponsePromise) {
+      this.emit('eventSubscribeRequestCredentialsCheck', name);
+      await this.credentialsResponsePromise;
+    }
+
     const responsePromise = new Promise((resolve, reject) => {
       const handleEventSubscribeResponse = (n, success, code, message) => {
         if (n !== name) {
@@ -871,6 +887,11 @@ class Client extends EventEmitter {
   }
 
   async _sendPublishRequest(name        ) {
+    if (this.credentialsResponsePromise) {
+      this.emit('publishRequestCredentialsCheck', name);
+      await this.credentialsResponsePromise;
+    }
+
     const responsePromise = new Promise((resolve, reject) => {
       const handlePublishResponse = (n, success, code, message) => {
         if (n !== name) {
@@ -963,6 +984,7 @@ class Client extends EventEmitter {
                                                                
                                                                     
                                                              
+                                                           
 }
 
 module.exports = Client;
