@@ -416,7 +416,7 @@ class Client extends EventEmitter {
   async sendCredentials(credentials: Object) {
     this.credentials = credentials;
     if (!this.ws) {
-      return;
+      throw new Error(`Can not send credentials, connection to ${this.address} is not open`);
     }
     this.credentialsResponsePromise = new Promise((resolve, reject) => {
       const handleCredentialsResponse = (success, code, message) => {
@@ -446,8 +446,8 @@ class Client extends EventEmitter {
         this.removeListener('credentialsResponse', handleCredentialsResponse);
         this.removeListener('close', handleClose);
         this.removeListener('error', handleError);
-        this.logger.error(`Error received before a credentials response was received: ${error.message || 'Unkown error'}`);
-        reject(new ServerRequestError(`Error received before a credentials response was received: ${error.message || 'Unkown error'}`, 500));
+        this.logger.error(`Error received before a credentials response was received: ${error.message || 'Unknown error'}`);
+        reject(new ServerRequestError(`Error received before a credentials response was received: ${error.message || 'Unknown error'}`, 500));
       };
       const timeout = setTimeout(() => {
         this.removeListener('credentialsResponse', handleCredentialsResponse);
@@ -586,8 +586,8 @@ class Client extends EventEmitter {
         this.removeListener('subscribeResponse', handleSubscribeResponse);
         this.removeListener('close', handleClose);
         this.removeListener('error', handleError);
-        this.logger.error(`Error received before a subscription response was received: ${error.message || 'Unkown error'}`);
-        reject(new ServerRequestError(`Error received before a subscription response was received: ${error.message || 'Unkown error'}`, 500));
+        this.logger.error(`Error received before a subscription response was received: ${error.message || 'Unknown error'}`);
+        reject(new ServerRequestError(`Error received before a subscription response was received: ${error.message || 'Unknown error'}`, 500));
       };
       const timeout = setTimeout(() => {
         this.removeListener('subscribeResponse', handleSubscribeResponse);
@@ -747,8 +747,8 @@ class Client extends EventEmitter {
         this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
         this.removeListener('close', handleClose);
         this.removeListener('error', handleError);
-        this.logger.error(`Error received before an event subscription response was received: ${error.message || 'Unkown error'}`);
-        reject(new ServerRequestError(`Error received before an event subscription response was received: ${error.message || 'Unkown error'}`, 500));
+        this.logger.error(`Error received before an event subscription response was received: ${error.message || 'Unknown error'}`);
+        reject(new ServerRequestError(`Error received before an event subscription response was received: ${error.message || 'Unknown error'}`, 500));
       };
       const timeout = setTimeout(() => {
         this.removeListener('eventSubscribeResponse', handleEventSubscribeResponse);
@@ -930,8 +930,8 @@ class Client extends EventEmitter {
         this.removeListener('publishResponse', handlePublishResponse);
         this.removeListener('close', handleClose);
         this.removeListener('error', handleError);
-        this.logger.error(`Error received before a publish response was received: ${error.message || 'Unkown error'}`);
-        reject(new ServerRequestError(`Error received before an publish response was received: ${error.message || 'Unkown error'}`, 500));
+        this.logger.error(`Error received before a publish response was received: ${error.message || 'Unknown error'}`);
+        reject(new ServerRequestError(`Error received before an publish response was received: ${error.message || 'Unknown error'}`, 500));
       };
       const timeout = setTimeout(() => {
         this.removeListener('publishResponse', handlePublishResponse);
