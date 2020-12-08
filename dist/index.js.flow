@@ -159,7 +159,7 @@ class Client extends EventEmitter {
    * @param {Object} [credentials] Credentials to send
    * @return {Promise<void>}
    */
-  async open(address:string, credentials?:Object = {}) {
+  async open(address:string, credentials?:Object) {
     if (this.ws) {
       throw new Error(`Connection to ${this.address} already open`);
     }
@@ -310,7 +310,7 @@ class Client extends EventEmitter {
 
     this.logger.info(`Opened websocket connection to Braid server at ${this.address}`);
 
-    if (credentials) {
+    if (typeof credentials === 'object') {
       await this.sendCredentials(credentials);
     } else {
       await this.sendRequests();
