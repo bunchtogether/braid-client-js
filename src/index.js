@@ -2,6 +2,7 @@
 
 const { EventEmitter } = require('events');
 const WebSocket = require('isomorphic-ws');
+const { default: PQueue } = require('p-queue');
 const ObservedRemoveMap = require('observed-remove/dist/map');
 const {
   encode,
@@ -129,6 +130,8 @@ class Client extends EventEmitter {
     this.data = new ObservedRemoveMap([], { bufferPublishing: 0 });
     this.timeoutDuration = 60000;
     this.subscriptions = new Set();
+    this.connectionQueue = new PQueue({ concurrency: 1 });
+    this.credentialQueue = new PQueue({ concurrency: 1 });
     this.confirmedSubscriptions = new Set();
     this.receivers = new Set();
     this.confirmedReceivers = new Set();
@@ -142,6 +145,13 @@ class Client extends EventEmitter {
     this.publishRequestPromises = new Map();
     this.setReconnectHandler(() => true);
     this.logger = baseLogger;
+    this.credentialQueue.once('active', () => {
+      this.logger.info('Credentials queue is active, adding idle handler');
+      this.credentialQueue.on('idle', () => {
+        this.logger.info('Credentials queue is idle, sending requests');
+        this.sendRequests();
+      });
+    });
   }
 
   /**
@@ -159,9 +169,30 @@ class Client extends EventEmitter {
    * @param {Object} [credentials] Credentials to send
    * @return {Promise<void>}
    */
-  async open(address:string, credentials?:Object) {
+
+  open(address:string, credentials?:Object) {
+    if (this.connectionQueue.size > 0 || this.connectionQueue.pending > 0) {
+      this.logger.error(`Connection already initiated, ${this.connectionQueue.size} connection${this.connectionQueue.size !== 1 ? 's' : ''} queued and ${this.connectionQueue.pending} connection${this.connectionQueue.pending !== 1 ? 's' : ''} pending`);
+    }
+    return this.connectionQueue.add(() => this._open(address, credentials)); // eslint-disable-line no-underscore-dangle
+  }
+
+  async _open(address:string, credentials?:Object) {
     if (this.ws) {
-      throw new Error(`Connection to ${this.address} already open`);
+      if (this.address === address) {
+        if (JSON.stringify(credentials || '') === JSON.stringify(this.credentials || '')) {
+          this.logger.error(`Connection already open, duplicate open call made to ${address} using the same credentials`);
+        } else if (typeof credentials === 'object') {
+          this.logger.error(`Connection already open, open call made to ${address} using alternate credentials`);
+          await this.sendCredentials(credentials);
+        } else {
+          this.logger.error(`Connection already open, open call made to ${address} without credentials`);
+          await this.sendCredentials({});
+        }
+        return;
+      }
+      this.logger.error(`Connection already open, closing connection to ${this.address} and opening new connection to ${address}`);
+      await this.close(1000, `Connecting to ${address}`);
     }
 
     clearTimeout(this.reconnectTimeout);
@@ -422,12 +453,23 @@ class Client extends EventEmitter {
    * @param {Object} [credentials] Credentials to send
    * @return {Promise<void>}
    */
-  async sendCredentials(credentials: Object) {
-    this.credentials = credentials;
+  sendCredentials(credentials: Object) {
+    if (this.credentialQueue.size > 0 || this.credentialQueue.pending > 0) {
+      this.logger.error(`Credentials already sent, ${this.credentialQueue.size} request${this.credentialQueue.size !== 1 ? 's' : ''} queued and ${this.credentialQueue.pending} request${this.credentialQueue.pending !== 1 ? 's' : ''} pending`);
+    }
+    return this.credentialQueue.add(() => this._sendCredentials(credentials)); // eslint-disable-line no-underscore-dangle
+  }
+
+  async _sendCredentials(credentials: Object) {
     if (!this.ws) {
       throw new Error(`Can not send credentials, connection to ${this.address} is not open`);
     }
-    this.credentialsResponsePromise = new Promise((resolve, reject) => {
+    if (JSON.stringify(credentials || '') === JSON.stringify(this.credentials || '')) {
+      this.logger.error(`Duplicate sendCredentials() call made to ${this.address}, connection already open with provided credentials`);
+      return;
+    }
+    this.credentials = credentials;
+    await new Promise((resolve, reject) => {
       const handleCredentialsResponse = (success, code, message) => {
         clearTimeout(timeout);
         this.removeListener('credentialsResponse', handleCredentialsResponse);
@@ -467,18 +509,8 @@ class Client extends EventEmitter {
       this.on('credentialsResponse', handleCredentialsResponse);
       this.on('close', handleClose);
       this.on('error', handleError);
+      this.ws.send(encode(new Credentials(credentials)));
     });
-    this.ws.send(encode(new Credentials(credentials)));
-
-    try {
-      await this.credentialsResponsePromise;
-      delete this.credentialsResponsePromise;
-    } catch (error) {
-      delete this.credentialsResponsePromise;
-      throw error;
-    }
-
-    await this.sendRequests();
   }
 
   /**
@@ -554,9 +586,10 @@ class Client extends EventEmitter {
   }
 
   async _sendSubscribeRequest(key: string) {
-    if (this.credentialsResponsePromise) {
+    if (this.connectionQueue.size > 0 || this.credentialQueue.size > 0 || this.connectionQueue.pending > 0 || this.credentialQueue.pending > 0) {
       this.emit('subscribeRequestCredentialsCheck', key);
-      await this.credentialsResponsePromise;
+      await this.connectionQueue.onIdle();
+      await this.credentialQueue.onIdle();
     }
     if (!this.ws) {
       throw new SubscribeError(key, 'Connection closed before a subscription request was sent', 502);
@@ -712,9 +745,10 @@ class Client extends EventEmitter {
   }
 
   async _sendEventSubscribeRequest(name: string) {
-    if (this.credentialsResponsePromise) {
+    if (this.connectionQueue.size > 0 || this.credentialQueue.size > 0 || this.connectionQueue.pending > 0 || this.credentialQueue.pending > 0) {
       this.emit('eventSubscribeRequestCredentialsCheck', name);
-      await this.credentialsResponsePromise;
+      await this.connectionQueue.onIdle();
+      await this.credentialQueue.onIdle();
     }
     if (!this.ws) {
       throw new EventSubscribeError(name, 'Connection closed before an event subscription request was sent', 502);
@@ -894,9 +928,10 @@ class Client extends EventEmitter {
   }
 
   async _sendPublishRequest(name: string) {
-    if (this.credentialsResponsePromise) {
+    if (this.connectionQueue.size > 0 || this.credentialQueue.size > 0 || this.connectionQueue.pending > 0 || this.credentialQueue.pending > 0) {
       this.emit('publishRequestCredentialsCheck', name);
-      await this.credentialsResponsePromise;
+      await this.connectionQueue.onIdle();
+      await this.credentialQueue.onIdle();
     }
     if (!this.ws) {
       throw new PublishError(name, 'Connection closed before a publish request was sent', 502);
@@ -981,6 +1016,9 @@ class Client extends EventEmitter {
   declare id:string;
   declare address:string;
   declare logger: Logger;
+  declare connectionQueue: PQueue;
+  declare credentialQueue: PQueue;
+  declare connectionHash: string | void;
   declare credentials: Object;
   declare subscriptions: Set<string>;
   declare confirmedSubscriptions: Set<string>;
@@ -1000,7 +1038,6 @@ class Client extends EventEmitter {
   declare subscribeRequestPromises: Map<string, Promise<void>>;
   declare eventSubscribeRequestPromises: Map<string, Promise<void>>;
   declare publishRequestPromises: Map<string, Promise<void>>;
-  declare credentialsResponsePromise: Promise<void> | void;
   static ConnectionError:Class<ConnectionError>;
 }
 
