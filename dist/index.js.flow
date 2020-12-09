@@ -146,7 +146,6 @@ class Client extends EventEmitter {
     this.setReconnectHandler(() => true);
     this.logger = baseLogger;
     this.credentialQueue.once('active', () => {
-      this.logger.info('Credentials queue is active, adding idle handler');
       this.credentialQueue.on('idle', () => {
         this.logger.info('Credentials queue is idle, sending requests');
         this.sendRequests();
@@ -382,9 +381,9 @@ class Client extends EventEmitter {
     }
     clearTimeout(this.reconnectTimeout);
     clearTimeout(this.reconnectAttemptResetTimeout);
-    this.reconnectAttempts += 1;
     clearTimeout(this.reconnectAttemptResetTimeout);
     const duration = this.reconnectAttempts > 5 ? 25000 + Math.round(Math.random() * 10000) : this.reconnectAttempts * this.reconnectAttempts * 1000;
+    this.reconnectAttempts += 1;
     this.logger.warn(`Reconnect attempt ${this.reconnectAttempts} in ${Math.round(duration / 100) / 10} seconds`);
     this.reconnectTimeout = setTimeout(async () => {
       clearTimeout(this.reconnectAttemptResetTimeout);
@@ -463,10 +462,6 @@ class Client extends EventEmitter {
   async _sendCredentials(credentials: Object) {
     if (!this.ws) {
       throw new Error(`Can not send credentials, connection to ${this.address} is not open`);
-    }
-    if (JSON.stringify(credentials || '') === JSON.stringify(this.credentials || '')) {
-      this.logger.error(`Duplicate sendCredentials() call made to ${this.address}, connection already open with provided credentials`);
-      return;
     }
     this.credentials = credentials;
     await new Promise((resolve, reject) => {
