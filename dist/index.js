@@ -351,24 +351,158 @@ class Client extends EventEmitter {
     const promises = [];
 
     for (const key of this.subscriptions) {
-      promises.push(this.sendSubscribeRequest(key).catch((error) => {
+      const promise = (async () => {
+        if (this.confirmedSubscriptions.has(key)) {
+          return;
+        }
+        this.subscriptions.add(key);
+        if (this.ws) {
+          this.sendSubscribeRequest(key);
+        }
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            this.removeListener('error', handleError);
+            this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
+            const error = new SubscribeError(key, `Subscription timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+            reject(error);
+          }, this.timeoutDuration + 1000);
+          const handleError = (error                       ) => {
+            if (!(error instanceof SubscribeError)) {
+              return;
+            }
+            if (error.itemKey !== key) {
+              return;
+            }
+            clearTimeout(timeout);
+            this.removeListener('error', handleError);
+            this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
+            if (error.code === 502) {
+              this.logger.warn(`Connection closed before a credentials response was received when subscribing to ${key} while opening connection to Braid server at ${this.address}`);
+              resolve();
+              return;
+            }
+            reject(error);
+          };
+          const handleSubscribeRequestSuccess = (k       ) => {
+            if (k !== key) {
+              return;
+            }
+            clearTimeout(timeout);
+            this.removeListener('error', handleError);
+            this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
+            resolve();
+          };
+          this.on('error', handleError);
+          this.on('subscribeRequestSuccess', handleSubscribeRequestSuccess);
+        });
+      })().catch((error) => {
         this.logger.error(`Error when subscribing to ${key} while opening connection to Braid server at ${this.address}`);
         this.logger.errorStack(error);
-      }));
+      });
+      promises.push(promise);
     }
 
     for (const name of this.eventSubscriptions.keys()) {
-      promises.push(this.sendEventSubscribeRequest(name).catch((error) => {
+      const promise = (async () => {
+        if (this.confirmedEventSubscriptions.has(name)) {
+          return;
+        }
+        if (this.ws) {
+          this.sendEventSubscribeRequest(name);
+        }
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            this.removeListener('error', handleError);
+            this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
+            const error = new EventSubscribeError(name, `Event subscription timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+            reject(error);
+          }, this.timeoutDuration + 1000);
+          const handleError = (error                            ) => {
+            if (!(error instanceof EventSubscribeError)) {
+              return;
+            }
+            if (error.itemName !== name) {
+              return;
+            }
+            clearTimeout(timeout);
+            this.removeListener('error', handleError);
+            this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
+            if (error.code === 502) {
+              this.logger.warn(`Connection closed before a credentials response was received when subscribing to event ${name} while opening connection to Braid server at ${this.address}`);
+              resolve();
+              return;
+            }
+            reject(error);
+          };
+          const handleEventSubscribeRequestSuccess = (n       ) => {
+            if (n !== name) {
+              return;
+            }
+            clearTimeout(timeout);
+            this.removeListener('error', handleError);
+            this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
+            resolve();
+          };
+          this.on('error', handleError);
+          this.on('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
+        });
+      })().catch((error) => {
         this.logger.error(`Error when subscribing to event ${name} while opening connection to Braid server at ${this.address}`);
         this.logger.errorStack(error);
-      }));
+      });
+      promises.push(promise);
     }
 
     for (const name of this.receivers) {
-      promises.push(this.sendPublishRequest(name).catch((error) => {
+      const promise = (async () => {
+        if (this.confirmedReceivers.has(name)) {
+          return;
+        }
+        this.receivers.add(name);
+        if (this.ws) {
+          this.sendPublishRequest(name);
+        }
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            this.removeListener('error', handleError);
+            this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
+            const error = new PublishError(name, `Publish timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+            reject(error);
+          }, this.timeoutDuration + 1000);
+          const handleError = (error                     ) => {
+            if (!(error instanceof PublishError)) {
+              return;
+            }
+            if (error.itemName !== name) {
+              return;
+            }
+            clearTimeout(timeout);
+            this.removeListener('error', handleError);
+            this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
+            if (error.code === 502) {
+              this.logger.warn(`Connection closed before a credentials response was received when publishing to ${name} while opening connection to Braid server at ${this.address}`);
+              resolve();
+              return;
+            }
+            reject(error);
+          };
+          const handlePublishRequestSuccess = (n       ) => {
+            if (n !== name) {
+              return;
+            }
+            clearTimeout(timeout);
+            this.removeListener('error', handleError);
+            this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
+            resolve();
+          };
+          this.on('error', handleError);
+          this.on('publishRequestSuccess', handlePublishRequestSuccess);
+        });
+      })().catch((error) => {
         this.logger.error(`Error when publishing to ${name} while opening connection to Braid server at ${this.address}`);
         this.logger.errorStack(error);
-      }));
+      });
+      promises.push(promise);
     }
 
     await Promise.all(promises);
