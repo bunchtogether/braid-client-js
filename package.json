@@ -1,6 +1,6 @@
 {
   "name": "@bunchtogether/braid-client",
-  "version": "1.1.33",
+  "version": "1.1.40",
   "main": "dist/index.js",
   "repository": "https://github.com/bunchtogether/braid-client-js.git",
   "author": "johnwehr@bunchtogether.com",
@@ -13,12 +13,8 @@
     "lint:js": "eslint -c ./.eslintrc --no-eslintrc --fix --cache .",
     "lint:flow": "flow --show-all-errors",
     "coverage": "codecov",
-    "documentation": "documentation readme src/index.js --section='API'"
-  },
-  "husky": {
-    "hooks": {
-      "pre-commit": "yarn lint && yarn build && git add dist ./README.md"
-    }
+    "documentation": "documentation readme src/index.js --section='API'",
+    "prepare": "husky install"
   },
   "jest": {
     "coverageDirectory": "./coverage/",
@@ -29,32 +25,32 @@
     ]
   },
   "devDependencies": {
-    "@babel/core": "^7.11.6",
-    "@babel/plugin-proposal-class-properties": "^7.10.4",
-    "@babel/plugin-transform-flow-strip-types": "^7.10.4",
+    "@babel/core": "^7.14.2",
+    "@babel/plugin-proposal-class-properties": "^7.13.0",
+    "@babel/plugin-transform-flow-strip-types": "^7.13.0",
     "babel-eslint": "^10.1.0",
-    "codecov": "^3.7.2",
-    "cross-env": "^7.0.2",
-    "documentation": "^13.0.2",
-    "eslint": "^7.8.1",
+    "codecov": "^3.8.2",
+    "cross-env": "^7.0.3",
+    "documentation": "^13.2.5",
+    "eslint": "^7.26.0",
     "eslint-config-bunchtogether": "^1.1.6",
-    "eslint-plugin-flowtype": "^5.2.0",
-    "eslint-plugin-flowtype-errors": "^4.3.0",
-    "eslint-plugin-import": "^2.22.0",
-    "eslint-plugin-jest": "^24.0.0",
-    "eslint-plugin-jsx-a11y": "^6.3.1",
-    "eslint-plugin-react": "^7.20.6",
-    "expect": "^26.4.2",
+    "eslint-plugin-flowtype": "^5.7.2",
+    "eslint-plugin-flowtype-errors": "^4.4.0",
+    "eslint-plugin-import": "^2.23.0",
+    "eslint-plugin-jest": "^24.3.6",
+    "eslint-plugin-jsx-a11y": "^6.4.1",
+    "eslint-plugin-react": "^7.23.2",
+    "expect": "^26.6.2",
     "flow-bin": "^0.125.1",
     "flow-copy-source": "^2.0.9",
-    "flow-remove-types": "^2.133.0",
-    "flow-typed": "^3.2.1",
-    "husky": "^4.3.0",
-    "jest": "^26.4.2",
-    "jest-diff": "^26.4.2"
+    "flow-remove-types": "^2.151.0",
+    "flow-typed": "^3.3.1",
+    "husky": "^6.0.0",
+    "jest": "^26.6.3",
+    "jest-diff": "^26.6.2"
   },
   "dependencies": {
-    "@bunchtogether/braid-messagepack": "1.1.19",
+    "@bunchtogether/braid-messagepack": "1.1.40",
     "isomorphic-ws": "^4.0.1",
     "observed-remove": "^2.2.27",
     "p-queue": "^6.6.2"
