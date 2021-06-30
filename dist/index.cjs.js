@@ -408,11 +408,11 @@ class Client extends _events.default {
       }
     };
 
-    ws.onerror = event => {
+    ws.onerror = () => {
       if (this.shouldReconnect) {
-        this.emit('error', new ConnectionError(`Websocket error when connecting to ${this.address}, check the 'close' event for additional details${event ? `: ${JSON.stringify(event)}` : ''}`));
+        this.emit('error', new ConnectionError(`Websocket error when connecting to ${this.address}, check the 'close' event for additional details`));
       } else {
-        this.logger.warn(`Websocket error when connecting to ${this.address}, check the 'close' event for additional details${event ? `: ${JSON.stringify(event)}` : ''}`);
+        this.logger.warn(`Websocket error when connecting to ${this.address}, check the 'close' event for additional details`);
       }
     };
 
