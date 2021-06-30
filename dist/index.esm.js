@@ -205,7 +205,7 @@ export default class Client extends EventEmitter {
    */
 
 
-  open(address, credentials) {
+  async open(address, credentials) {
     // Store this for the stack trace
     this.reconnectErrorWithTrace = new Error('Reconnect error');
 
@@ -214,7 +214,20 @@ export default class Client extends EventEmitter {
     }
 
     this.shouldReconnect = true;
-    return this.connectionQueue.add(() => this._open(address, credentials)); // eslint-disable-line no-underscore-dangle
+
+    try {
+      const response = await this.connectionQueue.add(() => this._open(address, credentials)); // eslint-disable-line no-underscore-dangle
+
+      return response;
+    } catch (error) {
+      this.logger.error(`Open attempt failed: ${error.message}`);
+
+      if (error instanceof CredentialsError) {
+        await this.close(1008, 'Invalid credentials');
+      }
+
+      throw error;
+    }
   }
 
   async _open(address, credentials) {
@@ -228,10 +241,10 @@ export default class Client extends EventEmitter {
           this.logger.error(`Connection already open, duplicate open call made to ${address} using the same credentials`);
         } else if (typeof credentials === 'object') {
           this.logger.error(`Connection already open, open call made to ${address} using alternate credentials`);
-          await this.sendCredentials(credentials);
+          await this.credentialQueue.add(() => this._sendCredentials(credentials)); // eslint-disable-line no-underscore-dangle
         } else {
           this.logger.error(`Connection already open, open call made to ${address} without credentials`);
-          await this.sendCredentials({});
+          await this.credentialQueue.add(() => this._sendCredentials({})); // eslint-disable-line no-underscore-dangle
         }
 
         return;
@@ -434,7 +447,7 @@ export default class Client extends EventEmitter {
     this.logger.info(`Opened websocket connection to Braid server at ${this.address}`);
 
     if (typeof credentials === 'object') {
-      await this.sendCredentials(credentials);
+      await this.credentialQueue.add(() => this._sendCredentials(credentials)); // eslint-disable-line no-underscore-dangle
     } else {
       await this.sendRequests();
     }
@@ -592,12 +605,24 @@ export default class Client extends EventEmitter {
    */
 
 
-  sendCredentials(credentials) {
+  async sendCredentials(credentials) {
     if (this.credentialQueue.size > 0 || this.credentialQueue.pending > 0) {
       this.logger.error(`Credentials already sent, ${this.credentialQueue.size} request${this.credentialQueue.size !== 1 ? 's' : ''} queued and ${this.credentialQueue.pending} request${this.credentialQueue.pending !== 1 ? 's' : ''} pending`);
     }
 
-    return this.credentialQueue.add(() => this._sendCredentials(credentials)); // eslint-disable-line no-underscore-dangle
+    try {
+      const response = await this.credentialQueue.add(() => this._sendCredentials(credentials)); // eslint-disable-line no-underscore-dangle
+
+      return response;
+    } catch (error) {
+      this.logger.error(`Send credentials attempt failed: ${error.message}`);
+
+      if (error instanceof CredentialsError) {
+        await this.close(1008, 'Invalid credentials');
+      }
+
+      throw error;
+    }
   }
 
   async _sendCredentials(credentials) {
@@ -614,7 +639,8 @@ export default class Client extends EventEmitter {
         this.removeListener('close', handleClose);
         this.removeListener('error', handleError);
         this.logger.error('Connection close requested before a credentials response was received');
-        reject(new ServerRequestError('Connection close requested before a credentials response was received', 502));
+        const error = new ServerRequestError('Connection close requested before a credentials response was received', 502);
+        reject(error);
       };
 
       const handleCredentialsResponse = (success, code, message) => {
@@ -638,7 +664,8 @@ export default class Client extends EventEmitter {
         this.removeListener('close', handleClose);
         this.removeListener('error', handleError);
         this.logger.error('Connection closed before a credentials response was received');
-        reject(new ServerRequestError('Connection closed before a credentials response was received', 502));
+        const error = new ServerRequestError('Connection closed before a credentials response was received', 502);
+        reject(error);
       };
 
       const handleError = error => {
@@ -652,12 +679,19 @@ export default class Client extends EventEmitter {
         this.removeListener('close', handleClose);
         this.removeListener('error', handleError);
         this.logger.error(`Error received before a credentials response was received: ${error.message || 'Unknown error'}`);
-        reject(new ServerRequestError(`Error received before a credentials response was received: ${error.message || 'Unknown error'}`, 500));
+        const serverRequestError = new ServerRequestError(`Error received before a credentials response was received: ${error.message || 'Unknown error'}`, 500);
+        reject(serverRequestError);
       };
 
       const timeout = setTimeout(() => {
-        const error = new CredentialsError(`Credentials response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
-        this.emit('error', error);
+        clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
+        this.removeListener('credentialsResponse', handleCredentialsResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        this.logger.error('Connection closed before a credentials response was received');
+        const error = new ServerRequestError(`Credentials response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+        reject(error);
       }, this.timeoutDuration);
       this.on('closeRequested', handleCloseRequested);
       this.on('credentialsResponse', handleCredentialsResponse);
