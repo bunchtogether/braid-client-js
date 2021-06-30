@@ -516,6 +516,7 @@ export default class Client extends EventEmitter {
       if (shouldReconnect === false) {
         this.logger.warn(`Reconnect attempt ${this.reconnectAttempts} cancelled by reconnect handler`);
         this.shouldReconnect = false;
+        this.reconnectAttempts = 0;
         return;
       }
 

@@ -503,10 +503,10 @@ export default class Client extends EventEmitter {
       if (shouldReconnect === false) {
         this.logger.warn(`Reconnect attempt ${this.reconnectAttempts} cancelled by reconnect handler`);
         this.shouldReconnect = false;
+        this.reconnectAttempts = 0;
         return;
       }
       this.logger.warn(`Reconnect attempt ${this.reconnectAttempts}`);
-
       try {
         await this.connectionQueue.add(() => this._open(this.address, this.credentials)); // eslint-disable-line no-underscore-dangle
       } catch (error) {
