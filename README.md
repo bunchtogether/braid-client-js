@@ -216,7 +216,7 @@ Subscribe to a server event
 ##### Parameters
 
 *   `name` **[string](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String)** Name of the event to listen for
-*   `callback` **function (): void** 
+*   `callback` **function (): void?** 
 
 Returns **[Promise](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Promise)\<void>** 
 

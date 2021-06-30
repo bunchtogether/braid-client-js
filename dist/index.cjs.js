@@ -19,6 +19,16 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
+// Overwrite local setTimeout for debugging purposes
+// const oldSetTimeout = setTimeout;
+// setTimeout = (f, d) => {
+//   const e = new Error('TIMEOUT');
+//   const timeout = oldSetTimeout(() => {
+//     f();
+//     console.log('TIMEOUT RUNNING', e);
+//   }, d);
+//   return timeout;
+// };
 const log = (color, name, value, ...args) => {
   const label = `%c${name}: %c${value}`;
 
@@ -229,14 +239,22 @@ class Client extends _events.default {
 
 
   open(address, credentials) {
+    // Store this for the stack trace
+    this.reconnectErrorWithTrace = new Error('Reconnect error');
+
     if (this.connectionQueue.size > 0 || this.connectionQueue.pending > 0) {
       this.logger.error(`Connection already initiated, ${this.connectionQueue.size} connection${this.connectionQueue.size !== 1 ? 's' : ''} queued and ${this.connectionQueue.pending} connection${this.connectionQueue.pending !== 1 ? 's' : ''} pending`);
     }
 
+    this.shouldReconnect = true;
     return this.connectionQueue.add(() => this._open(address, credentials)); // eslint-disable-line no-underscore-dangle
   }
 
   async _open(address, credentials) {
+    if (!this.shouldReconnect) {
+      return;
+    }
+
     if (this.ws) {
       if (this.address === address) {
         if (JSON.stringify(credentials || '') === JSON.stringify(this.credentials || '')) {
@@ -253,11 +271,41 @@ class Client extends _events.default {
       }
 
       this.logger.error(`Connection already open, closing connection to ${this.address} and opening new connection to ${address}`);
-      await this.close(1000, `Connecting to ${address}`);
+      this.shouldReconnect = false;
+      await new Promise((resolve, reject) => {
+        const handleClose = () => {
+          clearTimeout(timeout);
+          this.removeListener('close', handleClose);
+          this.removeListener('error', handleError);
+          resolve();
+        };
+
+        const handleError = error => {
+          if (isTransactionError(error)) {
+            return;
+          }
+
+          clearTimeout(timeout);
+          this.removeListener('close', handleClose);
+          this.removeListener('error', handleError);
+          reject(error);
+        };
+
+        this.on('close', handleClose);
+        this.on('error', handleError);
+        const timeout = setTimeout(() => {
+          const error = new ConnectionError(`Did not receive a close event after ${this.timeoutDuration * 2 / 1000} seconds`);
+          this.emit('error', error);
+        }, this.timeoutDuration * 2);
+        this.ws.close(1000, `Connecting to ${address}`);
+      });
+      this.shouldReconnect = true;
+      await this._open(address, credentials); // eslint-disable-line no-underscore-dangle
+
+      return;
     }
 
     clearTimeout(this.reconnectTimeout);
-    this.shouldReconnect = true;
     this.address = address;
     const ws = new _isomorphicWs.default(address);
     const heartbeatInterval = setInterval(() => {
@@ -361,7 +409,11 @@ class Client extends _events.default {
     };
 
     ws.onerror = event => {
-      this.emit('error', new ConnectionError(`Websocket error when connecting to ${this.address}, check the 'close' event for additional details${event ? `: ${JSON.stringify(event)}` : ''}`));
+      if (this.shouldReconnect) {
+        this.emit('error', new ConnectionError(`Websocket error when connecting to ${this.address}, check the 'close' event for additional details${event ? `: ${JSON.stringify(event)}` : ''}`));
+      } else {
+        this.logger.warn(`Websocket error when connecting to ${this.address}, check the 'close' event for additional details${event ? `: ${JSON.stringify(event)}` : ''}`);
+      }
     };
 
     await new Promise((resolve, reject) => {
@@ -425,193 +477,48 @@ class Client extends _events.default {
     const promises = [];
 
     for (const key of this.subscriptions) {
-      const promise = (async () => {
-        if (this.confirmedSubscriptions.has(key)) {
+      promises.push(this.sendSubscribeRequest(key).catch(error => {
+        if (error.code === 502) {
           return;
         }
 
-        this.subscriptions.add(key);
-
-        if (this.ws) {
-          this.sendSubscribeRequest(key);
+        if (error instanceof SubscribeError && error.itemKey === key) {
+          this.emit('error', error);
+          return;
         }
 
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            this.removeListener('error', handleError);
-            this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
-            const error = new SubscribeError(key, `Subscription timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
-            reject(error);
-          }, this.timeoutDuration + 1000);
-
-          const handleError = error => {
-            if (!(error instanceof SubscribeError)) {
-              return;
-            }
-
-            if (error.itemKey !== key) {
-              return;
-            }
-
-            clearTimeout(timeout);
-            this.removeListener('error', handleError);
-            this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
-
-            if (error.code === 502) {
-              this.logger.warn(`Connection closed before a credentials response was received when subscribing to ${key} while opening connection to Braid server at ${this.address}`);
-              resolve();
-              return;
-            }
-
-            reject(error);
-          };
-
-          const handleSubscribeRequestSuccess = k => {
-            if (k !== key) {
-              return;
-            }
-
-            clearTimeout(timeout);
-            this.removeListener('error', handleError);
-            this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
-            resolve();
-          };
-
-          this.on('error', handleError);
-          this.on('subscribeRequestSuccess', handleSubscribeRequestSuccess);
-        });
-      })().catch(error => {
-        this.logger.error(`Error when subscribing to ${key} while opening connection to Braid server at ${this.address}`);
-        this.logger.errorStack(error);
-      });
-
-      promises.push(promise);
+        throw error;
+      }));
     }
 
     for (const name of this.eventSubscriptions.keys()) {
-      const promise = (async () => {
-        if (this.confirmedEventSubscriptions.has(name)) {
+      promises.push(this.sendEventSubscribeRequest(name).catch(error => {
+        if (error.code === 502) {
           return;
         }
 
-        if (this.ws) {
-          this.sendEventSubscribeRequest(name);
+        if (error instanceof EventSubscribeError && error.itemName === name) {
+          this.emit('error', error);
+          return;
         }
 
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            this.removeListener('error', handleError);
-            this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
-            const error = new EventSubscribeError(name, `Event subscription timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
-            reject(error);
-          }, this.timeoutDuration + 1000);
-
-          const handleError = error => {
-            if (!(error instanceof EventSubscribeError)) {
-              return;
-            }
-
-            if (error.itemName !== name) {
-              return;
-            }
-
-            clearTimeout(timeout);
-            this.removeListener('error', handleError);
-            this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
-
-            if (error.code === 502) {
-              this.logger.warn(`Connection closed before a credentials response was received when subscribing to event ${name} while opening connection to Braid server at ${this.address}`);
-              resolve();
-              return;
-            }
-
-            reject(error);
-          };
-
-          const handleEventSubscribeRequestSuccess = n => {
-            if (n !== name) {
-              return;
-            }
-
-            clearTimeout(timeout);
-            this.removeListener('error', handleError);
-            this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
-            resolve();
-          };
-
-          this.on('error', handleError);
-          this.on('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
-        });
-      })().catch(error => {
-        this.logger.error(`Error when subscribing to event ${name} while opening connection to Braid server at ${this.address}`);
-        this.logger.errorStack(error);
-      });
-
-      promises.push(promise);
+        throw error;
+      }));
     }
 
     for (const name of this.receivers) {
-      const promise = (async () => {
-        if (this.confirmedReceivers.has(name)) {
+      promises.push(this.sendPublishRequest(name).catch(error => {
+        if (error.code === 502) {
           return;
         }
 
-        this.receivers.add(name);
-
-        if (this.ws) {
-          this.sendPublishRequest(name);
+        if (error instanceof PublishError && error.itemName === name) {
+          this.emit('error', error);
+          return;
         }
 
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            this.removeListener('error', handleError);
-            this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
-            const error = new PublishError(name, `Publish timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
-            reject(error);
-          }, this.timeoutDuration + 1000);
-
-          const handleError = error => {
-            if (!(error instanceof PublishError)) {
-              return;
-            }
-
-            if (error.itemName !== name) {
-              return;
-            }
-
-            clearTimeout(timeout);
-            this.removeListener('error', handleError);
-            this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
-
-            if (error.code === 502) {
-              this.logger.warn(`Connection closed before a credentials response was received when publishing to ${name} while opening connection to Braid server at ${this.address}`);
-              resolve();
-              return;
-            }
-
-            reject(error);
-          };
-
-          const handlePublishRequestSuccess = n => {
-            if (n !== name) {
-              return;
-            }
-
-            clearTimeout(timeout);
-            this.removeListener('error', handleError);
-            this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
-            resolve();
-          };
-
-          this.on('error', handleError);
-          this.on('publishRequestSuccess', handlePublishRequestSuccess);
-        });
-      })().catch(error => {
-        this.logger.error(`Error when publishing to ${name} while opening connection to Braid server at ${this.address}`);
-        this.logger.errorStack(error);
-      });
-
-      promises.push(promise);
+        throw error;
+      }));
     }
 
     await Promise.all(promises);
@@ -629,6 +536,11 @@ class Client extends _events.default {
     const duration = this.reconnectAttempts > 5 ? 25000 + Math.round(Math.random() * 10000) : this.reconnectAttempts * this.reconnectAttempts * 1000;
     this.reconnectAttempts += 1;
     this.logger.warn(`Reconnect attempt ${this.reconnectAttempts} in ${Math.round(duration / 100) / 10} seconds`);
+
+    if (this.reconnectErrorWithTrace instanceof Error) {
+      this.logger.errorStack(this.reconnectErrorWithTrace);
+    }
+
     this.reconnectTimeout = setTimeout(async () => {
       clearTimeout(this.reconnectAttemptResetTimeout);
       const shouldReconnect = this.reconnectHandler(this.credentials);
@@ -643,7 +555,7 @@ class Client extends _events.default {
       this.logger.warn(`Reconnect attempt ${this.reconnectAttempts}`);
 
       try {
-        await this.open(this.address, this.credentials);
+        await this.connectionQueue.add(() => this._open(this.address, this.credentials)); // eslint-disable-line no-underscore-dangle
       } catch (error) {
         this.logger.error(`Reconnect attempt ${this.reconnectAttempts} failed: ${error.message}`);
         this.emit('error', error);
@@ -665,7 +577,13 @@ class Client extends _events.default {
   async close(code, reason) {
     clearTimeout(this.reconnectTimeout);
     clearTimeout(this.reconnectAttemptResetTimeout);
+    this.emit('closeRequested');
     this.shouldReconnect = false;
+    this.connectionQueue.clear();
+    this.credentialQueue.clear();
+    await Promise.all([this.connectionQueue.onIdle(), this.credentialQueue.onIdle()]);
+    clearTimeout(this.reconnectTimeout);
+    clearTimeout(this.reconnectAttemptResetTimeout);
 
     if (!this.ws) {
       return;
@@ -693,9 +611,8 @@ class Client extends _events.default {
       this.on('close', handleClose);
       this.on('error', handleError);
       const timeout = setTimeout(() => {
-        this.removeListener('close', handleClose);
-        this.removeListener('error', handleError);
-        reject(new ConnectionError(`Did not receive a close event after ${this.timeoutDuration * 2 / 1000} seconds`));
+        const error = new ConnectionError(`Did not receive a close event after ${this.timeoutDuration * 2 / 1000} seconds`);
+        this.emit('error', error);
       }, this.timeoutDuration * 2);
       this.ws.close(code, reason);
     });
@@ -722,8 +639,19 @@ class Client extends _events.default {
 
     this.credentials = credentials;
     await new Promise((resolve, reject) => {
+      const handleCloseRequested = () => {
+        clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
+        this.removeListener('credentialsResponse', handleCredentialsResponse);
+        this.removeListener('close', handleClose);
+        this.removeListener('error', handleError);
+        this.logger.error('Connection close requested before a credentials response was received');
+        reject(new ServerRequestError('Connection close requested before a credentials response was received', 502));
+      };
+
       const handleCredentialsResponse = (success, code, message) => {
         clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('credentialsResponse', handleCredentialsResponse);
         this.removeListener('close', handleClose);
         this.removeListener('error', handleError);
@@ -737,6 +665,7 @@ class Client extends _events.default {
 
       const handleClose = () => {
         clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('credentialsResponse', handleCredentialsResponse);
         this.removeListener('close', handleClose);
         this.removeListener('error', handleError);
@@ -750,6 +679,7 @@ class Client extends _events.default {
         }
 
         clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('credentialsResponse', handleCredentialsResponse);
         this.removeListener('close', handleClose);
         this.removeListener('error', handleError);
@@ -758,11 +688,10 @@ class Client extends _events.default {
       };
 
       const timeout = setTimeout(() => {
-        this.removeListener('credentialsResponse', handleCredentialsResponse);
-        this.removeListener('close', handleClose);
-        this.removeListener('error', handleError);
-        reject(new CredentialsError(`Credentials response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504));
+        const error = new CredentialsError(`Credentials response timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+        this.emit('error', error);
       }, this.timeoutDuration);
+      this.on('closeRequested', handleCloseRequested);
       this.on('credentialsResponse', handleCredentialsResponse);
       this.on('close', handleClose);
       this.on('error', handleError);
@@ -785,13 +714,25 @@ class Client extends _events.default {
     this.subscriptions.add(key);
 
     if (this.ws) {
-      this.sendSubscribeRequest(key);
+      this.sendSubscribeRequest(key).catch(error => {
+        this.emit('error', error);
+      });
     }
 
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const handleCloseRequested = () => {
+        clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('error', handleError);
         this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
+        resolve();
+      };
+
+      const timeout = setTimeout(() => {
+        this.removeListener('closeRequested', handleCloseRequested);
+        this.removeListener('error', handleError);
+        this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
+        this.unsubscribe(key);
         const error = new SubscribeError(key, `Subscription timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
         reject(error);
       }, this.timeoutDuration + 1000);
@@ -810,6 +751,7 @@ class Client extends _events.default {
         }
 
         clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('error', handleError);
         this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
         this.unsubscribe(key);
@@ -822,11 +764,13 @@ class Client extends _events.default {
         }
 
         clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('error', handleError);
         this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
         resolve();
       };
 
+      this.on('closeRequested', handleCloseRequested);
       this.on('error', handleError);
       this.on('subscribeRequestSuccess', handleSubscribeRequestSuccess);
     });
@@ -850,18 +794,23 @@ class Client extends _events.default {
     this.subscribeRequestPromises.set(key, promise);
     promise.then(() => {
       this.subscribeRequestPromises.delete(key);
-    }).catch(error => {
+    }).catch(() => {
       this.subscribeRequestPromises.delete(key);
-      this.emit('error', error);
     });
     return promise;
   }
 
   async _sendSubscribeRequest(key) {
-    if (this.connectionQueue.size > 0 || this.credentialQueue.size > 0 || this.connectionQueue.pending > 0 || this.credentialQueue.pending > 0) {
+    if (this.connectionQueue.size > 0) {
+      this.logger.warn(`Not sending subscription request, ${this.connectionQueue.size} pending ${this.connectionQueue.size === 1 ? 'connection' : 'connections'}`);
       this.emit('subscribeRequestCredentialsCheck', key);
-      await this.connectionQueue.onIdle();
-      await this.credentialQueue.onIdle();
+      return;
+    }
+
+    if (this.credentialQueue.size > 0) {
+      this.logger.warn(`Not sending subscription request, ${this.credentialQueue.size} pending ${this.credentialQueue.size === 1 ? 'credential' : 'credentials'}`);
+      this.emit('subscribeRequestCredentialsCheck', key);
+      return;
     }
 
     if (!this.ws) {
@@ -967,20 +916,34 @@ class Client extends _events.default {
       this.eventSubscriptions.set(name, callbacks);
     }
 
-    callbacks.add(callback);
+    if (typeof callback === 'function') {
+      callbacks.add(callback);
+    }
 
     if (this.confirmedEventSubscriptions.has(name)) {
       return;
     }
 
     if (this.ws) {
-      this.sendEventSubscribeRequest(name);
+      this.sendEventSubscribeRequest(name).catch(error => {
+        this.emit('error', error);
+      });
     }
 
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const handleCloseRequested = () => {
+        clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('error', handleError);
         this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
+        resolve();
+      };
+
+      const timeout = setTimeout(() => {
+        this.removeListener('closeRequested', handleCloseRequested);
+        this.removeListener('error', handleError);
+        this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
+        this.removeServerEventListener(name);
         const error = new EventSubscribeError(name, `Event subscription timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
         reject(error);
       }, this.timeoutDuration + 1000);
@@ -999,9 +962,10 @@ class Client extends _events.default {
         }
 
         clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('error', handleError);
         this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
-        this.removeServerEventListener(name, callback);
+        this.removeServerEventListener(name);
         reject(error);
       };
 
@@ -1011,11 +975,13 @@ class Client extends _events.default {
         }
 
         clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('error', handleError);
         this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
         resolve();
       };
 
+      this.on('closeRequested', handleCloseRequested);
       this.on('error', handleError);
       this.on('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
     });
@@ -1039,18 +1005,23 @@ class Client extends _events.default {
     this.eventSubscribeRequestPromises.set(name, promise);
     promise.then(() => {
       this.eventSubscribeRequestPromises.delete(name);
-    }).catch(error => {
+    }).catch(() => {
       this.eventSubscribeRequestPromises.delete(name);
-      this.emit('error', error);
     });
     return promise;
   }
 
   async _sendEventSubscribeRequest(name) {
-    if (this.connectionQueue.size > 0 || this.credentialQueue.size > 0 || this.connectionQueue.pending > 0 || this.credentialQueue.pending > 0) {
+    if (this.connectionQueue.size > 0) {
+      this.logger.warn(`Not sending event subscription request, ${this.connectionQueue.size} pending ${this.connectionQueue.size === 1 ? 'connection' : 'connections'}`);
       this.emit('eventSubscribeRequestCredentialsCheck', name);
-      await this.connectionQueue.onIdle();
-      await this.credentialQueue.onIdle();
+      return;
+    }
+
+    if (this.credentialQueue.size > 0) {
+      this.logger.warn(`Not sending event subscription request, ${this.credentialQueue.size} pending ${this.credentialQueue.size === 1 ? 'credential' : 'credentials'}`);
+      this.emit('eventSubscribeRequestCredentialsCheck', name);
+      return;
     }
 
     if (!this.ws) {
@@ -1165,13 +1136,25 @@ class Client extends _events.default {
     this.receivers.add(name);
 
     if (this.ws) {
-      this.sendPublishRequest(name);
+      this.sendPublishRequest(name).catch(error => {
+        this.emit('error', error);
+      });
     }
 
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const handleCloseRequested = () => {
+        clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('error', handleError);
         this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
+        resolve();
+      };
+
+      const timeout = setTimeout(() => {
+        this.removeListener('closeRequested', handleCloseRequested);
+        this.removeListener('error', handleError);
+        this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
+        this.stopPublishing(name);
         const error = new PublishError(name, `Publish timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
         reject(error);
       }, this.timeoutDuration + 1000);
@@ -1190,6 +1173,7 @@ class Client extends _events.default {
         }
 
         clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('error', handleError);
         this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
         this.stopPublishing(name);
@@ -1202,11 +1186,13 @@ class Client extends _events.default {
         }
 
         clearTimeout(timeout);
+        this.removeListener('closeRequested', handleCloseRequested);
         this.removeListener('error', handleError);
         this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
         resolve();
       };
 
+      this.on('closeRequested', handleCloseRequested);
       this.on('error', handleError);
       this.on('publishRequestSuccess', handlePublishRequestSuccess);
     });
@@ -1255,18 +1241,23 @@ class Client extends _events.default {
     this.publishRequestPromises.set(name, promise);
     promise.then(() => {
       this.publishRequestPromises.delete(name);
-    }).catch(error => {
+    }).catch(() => {
       this.publishRequestPromises.delete(name);
-      this.emit('error', error);
     });
     return promise;
   }
 
   async _sendPublishRequest(name) {
-    if (this.connectionQueue.size > 0 || this.credentialQueue.size > 0 || this.connectionQueue.pending > 0 || this.credentialQueue.pending > 0) {
+    if (this.connectionQueue.size > 0) {
+      this.logger.warn(`Not sending publish request, ${this.connectionQueue.size} pending ${this.connectionQueue.size === 1 ? 'connection' : 'connections'}`);
       this.emit('publishRequestCredentialsCheck', name);
-      await this.connectionQueue.onIdle();
-      await this.credentialQueue.onIdle();
+      return;
+    }
+
+    if (this.credentialQueue.size > 0) {
+      this.logger.warn(`Not sending publish request, ${this.credentialQueue.size} pending ${this.credentialQueue.size === 1 ? 'credential' : 'credentials'}`);
+      this.emit('publishRequestCredentialsCheck', name);
+      return;
     }
 
     if (!this.ws) {
