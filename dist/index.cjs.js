@@ -399,6 +399,7 @@ class Client extends _events.default {
       const message = (0, _braidMessagepack.decode)(data);
 
       if (message instanceof _braidMessagepack.DataDump) {
+        this.emit('process', message.queue);
         this.data.process(message.queue, true); // eslint-disable-line no-underscore-dangle
       } else if (message instanceof _braidMessagepack.CredentialsResponse) {
         this.emit('credentialsResponse', message.value.success, message.value.code, message.value.message);
@@ -746,6 +747,7 @@ class Client extends _events.default {
       return;
     }
 
+    this.emit('subscribe', key);
     this.subscriptions.add(key);
 
     if (this.ws) {

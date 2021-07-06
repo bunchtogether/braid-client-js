@@ -366,6 +366,7 @@ export default class Client extends EventEmitter {
       const message = decode(data);
 
       if (message instanceof DataDump) {
+        this.emit('process', message.queue);
         this.data.process(message.queue, true); // eslint-disable-line no-underscore-dangle
       } else if (message instanceof CredentialsResponse) {
         this.emit('credentialsResponse', message.value.success, message.value.code, message.value.message);
@@ -713,6 +714,7 @@ export default class Client extends EventEmitter {
       return;
     }
 
+    this.emit('subscribe', key);
     this.subscriptions.add(key);
 
     if (this.ws) {
