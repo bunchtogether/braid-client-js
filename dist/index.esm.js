@@ -723,6 +723,7 @@ export default class Client extends EventEmitter {
       });
     }
 
+    const errorWithTrace = new Error();
     await new Promise((resolve, reject) => {
       const handleCloseRequested = () => {
         clearTimeout(timeout);
@@ -738,6 +739,7 @@ export default class Client extends EventEmitter {
         this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
         this.unsubscribe(key);
         const error = new SubscribeError(key, `Subscription timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+        error.stack = [error.message].concat(errorWithTrace.stack.split('\n').slice(1)).join('\n');
         reject(error);
       }, this.timeoutDuration + 1000);
 
@@ -759,6 +761,8 @@ export default class Client extends EventEmitter {
         this.removeListener('error', handleError);
         this.removeListener('subscribeRequestSuccess', handleSubscribeRequestSuccess);
         this.unsubscribe(key);
+        error.stack = [error.message].concat(errorWithTrace.stack.split('\n').slice(1)).join('\n'); // eslint-disable-line no-param-reassign
+
         reject(error);
       };
 
@@ -934,6 +938,7 @@ export default class Client extends EventEmitter {
       });
     }
 
+    const errorWithTrace = new Error();
     await new Promise((resolve, reject) => {
       const handleCloseRequested = () => {
         clearTimeout(timeout);
@@ -949,6 +954,7 @@ export default class Client extends EventEmitter {
         this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
         this.removeServerEventListener(name);
         const error = new EventSubscribeError(name, `Event subscription timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+        error.stack = [error.message].concat(errorWithTrace.stack.split('\n').slice(1)).join('\n');
         reject(error);
       }, this.timeoutDuration + 1000);
 
@@ -970,6 +976,8 @@ export default class Client extends EventEmitter {
         this.removeListener('error', handleError);
         this.removeListener('eventSubscribeRequestSuccess', handleEventSubscribeRequestSuccess);
         this.removeServerEventListener(name);
+        error.stack = [error.message].concat(errorWithTrace.stack.split('\n').slice(1)).join('\n'); // eslint-disable-line no-param-reassign
+
         reject(error);
       };
 
@@ -1145,6 +1153,7 @@ export default class Client extends EventEmitter {
       });
     }
 
+    const errorWithTrace = new Error();
     await new Promise((resolve, reject) => {
       const handleCloseRequested = () => {
         clearTimeout(timeout);
@@ -1160,6 +1169,7 @@ export default class Client extends EventEmitter {
         this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
         this.stopPublishing(name);
         const error = new PublishError(name, `Publish timeout after ${Math.round(this.timeoutDuration / 100) / 10} seconds`, 504);
+        error.stack = [error.message].concat(errorWithTrace.stack.split('\n').slice(1)).join('\n');
         reject(error);
       }, this.timeoutDuration + 1000);
 
@@ -1181,6 +1191,8 @@ export default class Client extends EventEmitter {
         this.removeListener('error', handleError);
         this.removeListener('publishRequestSuccess', handlePublishRequestSuccess);
         this.stopPublishing(name);
+        error.stack = [error.message].concat(errorWithTrace.stack.split('\n').slice(1)).join('\n'); // eslint-disable-line no-param-reassign
+
         reject(error);
       };
 
