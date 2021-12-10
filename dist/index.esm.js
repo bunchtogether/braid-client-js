@@ -363,7 +363,7 @@ export default class Client extends EventEmitter {
       const {
         data
       } = event;
-      const message = decode(data);
+      const message = decode(Buffer.from(data));
 
       if (message instanceof DataDump) {
         this.emit('process', message.queue);

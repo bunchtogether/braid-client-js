@@ -365,7 +365,7 @@ export default class Client extends EventEmitter {
 
     ws.onmessage = (event) => {
       const { data } = event;
-      const message = decode(data);
+      const message = decode(Buffer.from(data));
       if (message instanceof DataDump) {
         this.emit('process', message.queue);
         this.data.process(message.queue, true); // eslint-disable-line no-underscore-dangle

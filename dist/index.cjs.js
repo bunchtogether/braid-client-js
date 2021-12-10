@@ -396,7 +396,7 @@ class Client extends _events.default {
       const {
         data
       } = event;
-      const message = (0, _braidMessagepack.decode)(data);
+      const message = (0, _braidMessagepack.decode)(Buffer.from(data));
 
       if (message instanceof _braidMessagepack.DataDump) {
         this.emit('process', message.queue);
