@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.default = exports.ServerRequestError = exports.PublishError = exports.EventSubscribeError = exports.SubscribeError = exports.CredentialsError = exports.ConnectionError = void 0;
+exports.default = exports.SubscribeError = exports.ServerRequestError = exports.PublishError = exports.EventSubscribeError = exports.CredentialsError = exports.ConnectionError = void 0;
 
 var _events = _interopRequireDefault(require("events"));
 
@@ -188,7 +188,7 @@ class Client extends _events.default {
      * @public
      */
 
-    this.data = new _map.default([], {
+    this.data = new _map.default(undefined, {
       bufferPublishing: 0
     });
     this.timeoutDuration = 60000;
@@ -268,7 +268,9 @@ class Client extends _events.default {
       return;
     }
 
-    if (this.ws) {
+    const oldWs = this.ws;
+
+    if (oldWs) {
       if (this.address === address) {
         if (JSON.stringify(credentials || '') === JSON.stringify(this.credentials || '')) {
           this.logger.error(`Connection already open, duplicate open call made to ${address} using the same credentials`);
@@ -310,7 +312,7 @@ class Client extends _events.default {
           const error = new ConnectionError(`Did not receive a close event after ${this.timeoutDuration * 2 / 1000} seconds`);
           this.emit('error', error);
         }, this.timeoutDuration * 2);
-        this.ws.close(1000, `Connecting to ${address}`);
+        oldWs.close(1000, `Connecting to ${address}`);
       });
       this.shouldReconnect = true;
       await this._open(address, credentials); // eslint-disable-line no-underscore-dangle
@@ -599,8 +601,9 @@ class Client extends _events.default {
     await Promise.all([this.connectionQueue.onIdle(), this.credentialQueue.onIdle()]);
     clearTimeout(this.reconnectTimeout);
     clearTimeout(this.reconnectAttemptResetTimeout);
+    const ws = this.ws;
 
-    if (!this.ws) {
+    if (!ws) {
       return;
     }
 
@@ -629,7 +632,7 @@ class Client extends _events.default {
         const error = new ConnectionError(`Did not receive a close event after ${this.timeoutDuration * 2 / 1000} seconds`);
         this.emit('error', error);
       }, this.timeoutDuration * 2);
-      this.ws.close(code, reason);
+      ws.close(code, reason);
     });
   }
   /**
@@ -660,7 +663,9 @@ class Client extends _events.default {
   }
 
   async _sendCredentials(credentials) {
-    if (!this.ws) {
+    const ws = this.ws;
+
+    if (!ws) {
       throw new Error(`Can not send credentials, connection to ${this.address} is not open`);
     }
 
@@ -731,7 +736,7 @@ class Client extends _events.default {
       this.on('credentialsResponse', handleCredentialsResponse);
       this.on('close', handleClose);
       this.on('error', handleError);
-      this.ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.Credentials(credentials)));
+      ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.Credentials(credentials)));
     });
   }
   /**
@@ -854,7 +859,9 @@ class Client extends _events.default {
       return;
     }
 
-    if (!this.ws) {
+    const ws = this.ws;
+
+    if (!ws) {
       throw new SubscribeError(key, 'Connection closed before a subscription request was sent', 502);
     }
 
@@ -916,7 +923,7 @@ class Client extends _events.default {
       this.on('subscribeResponse', handleSubscribeResponse);
       this.on('close', handleClose);
       this.on('error', handleError);
-      this.ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.SubscribeRequest(key)));
+      ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.SubscribeRequest(key)));
     });
   }
   /**
@@ -934,12 +941,13 @@ class Client extends _events.default {
 
     this.subscriptions.delete(key);
     this.confirmedSubscriptions.delete(key);
+    const ws = this.ws;
 
-    if (!this.ws) {
+    if (!ws) {
       return;
     }
 
-    this.ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.Unsubscribe(key)));
+    ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.Unsubscribe(key)));
   }
   /**
    * Subscribe to a server event
@@ -1069,7 +1077,9 @@ class Client extends _events.default {
       return;
     }
 
-    if (!this.ws) {
+    const ws = this.ws;
+
+    if (!ws) {
       throw new EventSubscribeError(name, 'Connection closed before an event subscription request was sent', 502);
     }
 
@@ -1131,7 +1141,7 @@ class Client extends _events.default {
       this.on('eventSubscribeResponse', handleEventSubscribeResponse);
       this.on('close', handleClose);
       this.on('error', handleError);
-      this.ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.EventSubscribeRequest(name)));
+      ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.EventSubscribeRequest(name)));
     });
   }
   /**
@@ -1159,12 +1169,13 @@ class Client extends _events.default {
 
     this.eventSubscriptions.delete(name);
     this.confirmedEventSubscriptions.delete(name);
+    const ws = this.ws;
 
-    if (!this.ws) {
+    if (!ws) {
       return;
     }
 
-    this.ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.EventUnsubscribe(name)));
+    ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.EventUnsubscribe(name)));
   }
   /**
    * Start publishing to a receiver
@@ -1263,8 +1274,10 @@ class Client extends _events.default {
       throw new Error('Unable to publish undefined values');
     }
 
-    if (this.ws) {
-      this.ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.PublisherMessage(name, message)));
+    const ws = this.ws;
+
+    if (ws) {
+      ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.PublisherMessage(name, message)));
     } else {
       const publishQueue = this.publishQueueMap.get(name) || [];
       publishQueue.push(message);
@@ -1309,7 +1322,9 @@ class Client extends _events.default {
       return;
     }
 
-    if (!this.ws) {
+    const ws = this.ws;
+
+    if (!ws) {
       throw new PublishError(name, 'Connection closed before a publish request was sent', 502);
     }
 
@@ -1378,7 +1393,7 @@ class Client extends _events.default {
       this.on('publishResponse', handlePublishResponse);
       this.on('close', handleClose);
       this.on('error', handleError);
-      this.ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.PublishRequest(name)));
+      ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.PublishRequest(name)));
     });
   }
   /**

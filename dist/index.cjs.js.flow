@@ -1,7 +1,7 @@
 // @flow
 
 import EventEmitter from 'events';
-import WebSocket from 'isomorphic-ws';
+import IsomorphicWebSocket from 'isomorphic-ws';
 import PQueue from 'p-queue';
 import ObservedRemoveMap from 'observed-remove/dist/map';
 
@@ -181,7 +181,7 @@ export default class Client extends EventEmitter {
      * @type ObservedRemoveMap<K, V>
      * @public
      */
-    this.data = new ObservedRemoveMap([], { bufferPublishing: 0 });
+    this.data = new ObservedRemoveMap(undefined, { bufferPublishing: 0 });
     this.timeoutDuration = 60000;
     this.subscriptions = new Set();
     this.connectionQueue = new PQueue({ concurrency: 1 });
@@ -223,7 +223,7 @@ export default class Client extends EventEmitter {
    * @return {Promise<void>}
    */
 
-  async open(address:string, credentials?:Object) {
+  async open(address:string, credentials?:Object):Promise<void> {
     // Store this for the stack trace
     this.reconnectErrorWithTrace = new Error('Reconnect error');
     if (this.connectionQueue.size > 0 || this.connectionQueue.pending > 0) {
@@ -246,7 +246,8 @@ export default class Client extends EventEmitter {
     if (!this.shouldReconnect) {
       return;
     }
-    if (this.ws) {
+    const oldWs = this.ws;
+    if (oldWs) {
       if (this.address === address) {
         if (JSON.stringify(credentials || '') === JSON.stringify(this.credentials || '')) {
           this.logger.error(`Connection already open, duplicate open call made to ${address} using the same credentials`);
@@ -283,7 +284,7 @@ export default class Client extends EventEmitter {
           const error = new ConnectionError(`Did not receive a close event after ${this.timeoutDuration * 2 / 1000} seconds`);
           this.emit('error', error);
         }, this.timeoutDuration * 2);
-        this.ws.close(1000, `Connecting to ${address}`);
+        oldWs.close(1000, `Connecting to ${address}`);
       });
       this.shouldReconnect = true;
       await this._open(address, credentials); // eslint-disable-line no-underscore-dangle
@@ -294,7 +295,7 @@ export default class Client extends EventEmitter {
 
     this.address = address;
 
-    const ws = new WebSocket(address);
+    const ws = new IsomorphicWebSocket(address);
 
     const heartbeatInterval = setInterval(() => {
       if (ws.readyState === 1) {
@@ -548,7 +549,8 @@ export default class Client extends EventEmitter {
     ]);
     clearTimeout(this.reconnectTimeout);
     clearTimeout(this.reconnectAttemptResetTimeout);
-    if (!this.ws) {
+    const ws = this.ws;
+    if (!ws) {
       return;
     }
     await new Promise((resolve, reject) => {
@@ -573,7 +575,7 @@ export default class Client extends EventEmitter {
         const error = new ConnectionError(`Did not receive a close event after ${this.timeoutDuration * 2 / 1000} seconds`);
         this.emit('error', error);
       }, this.timeoutDuration * 2);
-      this.ws.close(code, reason);
+      ws.close(code, reason);
     });
   }
 
@@ -582,7 +584,7 @@ export default class Client extends EventEmitter {
    * @param {Object} [credentials] Credentials to send
    * @return {Promise<void>}
    */
-  async sendCredentials(credentials: Object) {
+  async sendCredentials(credentials: Object):Promise<void> {
     if (this.credentialQueue.size > 0 || this.credentialQueue.pending > 0) {
       this.logger.error(`Credentials already sent, ${this.credentialQueue.size} request${this.credentialQueue.size !== 1 ? 's' : ''} queued and ${this.credentialQueue.pending} request${this.credentialQueue.pending !== 1 ? 's' : ''} pending`);
     }
@@ -599,7 +601,8 @@ export default class Client extends EventEmitter {
   }
 
   async _sendCredentials(credentials: Object) {
-    if (!this.ws) {
+    const ws = this.ws;
+    if (!ws) {
       throw new Error(`Can not send credentials, connection to ${this.address} is not open`);
     }
     this.credentials = credentials;
@@ -663,7 +666,7 @@ export default class Client extends EventEmitter {
       this.on('credentialsResponse', handleCredentialsResponse);
       this.on('close', handleClose);
       this.on('error', handleError);
-      this.ws.send(encode(new Credentials(credentials)));
+      ws.send(encode(new Credentials(credentials)));
     });
   }
 
@@ -741,7 +744,7 @@ export default class Client extends EventEmitter {
    * @param {string} key Key to request updates on
    * @return {Promise<void>}
    */
-  sendSubscribeRequest(key: string) {
+  sendSubscribeRequest(key: string):Promise<void> {
     let promise = this.subscribeRequestPromises.get(key);
     if (promise) {
       return promise;
@@ -767,7 +770,8 @@ export default class Client extends EventEmitter {
       this.emit('subscribeRequestCredentialsCheck', key);
       return;
     }
-    if (!this.ws) {
+    const ws = this.ws;
+    if (!ws) {
       throw new SubscribeError(key, 'Connection closed before a subscription request was sent', 502);
     }
     await new Promise((resolve, reject) => {
@@ -820,7 +824,7 @@ export default class Client extends EventEmitter {
       this.on('subscribeResponse', handleSubscribeResponse);
       this.on('close', handleClose);
       this.on('error', handleError);
-      this.ws.send(encode(new SubscribeRequest(key)));
+      ws.send(encode(new SubscribeRequest(key)));
     });
   }
 
@@ -836,10 +840,11 @@ export default class Client extends EventEmitter {
     }
     this.subscriptions.delete(key);
     this.confirmedSubscriptions.delete(key);
-    if (!this.ws) {
+    const ws = this.ws;
+    if (!ws) {
       return;
     }
-    this.ws.send(encode(new Unsubscribe(key)));
+    ws.send(encode(new Unsubscribe(key)));
   }
 
   /**
@@ -923,7 +928,7 @@ export default class Client extends EventEmitter {
    * @param {string} name Name of the event to listen for
    * @return {Promise<void>}
    */
-  sendEventSubscribeRequest(name: string) {
+  sendEventSubscribeRequest(name: string):Promise<void> {
     let promise = this.eventSubscribeRequestPromises.get(name);
     if (promise) {
       return promise;
@@ -949,7 +954,8 @@ export default class Client extends EventEmitter {
       this.emit('eventSubscribeRequestCredentialsCheck', name);
       return;
     }
-    if (!this.ws) {
+    const ws = this.ws;
+    if (!ws) {
       throw new EventSubscribeError(name, 'Connection closed before an event subscription request was sent', 502);
     }
     await new Promise((resolve, reject) => {
@@ -1002,7 +1008,7 @@ export default class Client extends EventEmitter {
       this.on('eventSubscribeResponse', handleEventSubscribeResponse);
       this.on('close', handleClose);
       this.on('error', handleError);
-      this.ws.send(encode(new EventSubscribeRequest(name)));
+      ws.send(encode(new EventSubscribeRequest(name)));
     });
   }
 
@@ -1025,10 +1031,11 @@ export default class Client extends EventEmitter {
     }
     this.eventSubscriptions.delete(name);
     this.confirmedEventSubscriptions.delete(name);
-    if (!this.ws) {
+    const ws = this.ws;
+    if (!ws) {
       return;
     }
-    this.ws.send(encode(new EventUnsubscribe(name)));
+    ws.send(encode(new EventUnsubscribe(name)));
   }
 
   /**
@@ -1112,8 +1119,9 @@ export default class Client extends EventEmitter {
     if (typeof message === 'undefined') {
       throw new Error('Unable to publish undefined values');
     }
-    if (this.ws) {
-      this.ws.send(encode(new PublisherMessage(name, message)));
+    const ws = this.ws;
+    if (ws) {
+      ws.send(encode(new PublisherMessage(name, message)));
     } else {
       const publishQueue = this.publishQueueMap.get(name) || [];
       publishQueue.push(message);
@@ -1127,7 +1135,7 @@ export default class Client extends EventEmitter {
    * @return {Promise<void>}
    */
 
-  sendPublishRequest(name: string) {
+  sendPublishRequest(name: string):Promise<void> {
     let promise = this.publishRequestPromises.get(name);
     if (promise) {
       return promise;
@@ -1153,7 +1161,8 @@ export default class Client extends EventEmitter {
       this.emit('publishRequestCredentialsCheck', name);
       return;
     }
-    if (!this.ws) {
+    const ws = this.ws;
+    if (!ws) {
       throw new PublishError(name, 'Connection closed before a publish request was sent', 502);
     }
     await new Promise((resolve, reject) => {
@@ -1211,7 +1220,7 @@ export default class Client extends EventEmitter {
       this.on('publishResponse', handlePublishResponse);
       this.on('close', handleClose);
       this.on('error', handleError);
-      this.ws.send(encode(new PublishRequest(name)));
+      ws.send(encode(new PublishRequest(name)));
     });
   }
 
@@ -1246,7 +1255,7 @@ export default class Client extends EventEmitter {
   declare confirmedReceivers: Set<string>;
   declare eventSubscriptions: Map<string, Set<(...any) => void>>;
   declare confirmedEventSubscriptions: Set<string>;
-  declare ws: WebSocket;
+  declare ws: void | WebSocket;
   declare data:ObservedRemoveMap<string, any>;
   declare timeoutDuration: number;
   declare reconnectAttempts: number;
