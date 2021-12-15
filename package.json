@@ -1,6 +1,6 @@
 {
   "name": "@bunchtogether/braid-client",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
   "exports": {
@@ -57,7 +57,7 @@
     "jest-diff": "^27.4.2"
   },
   "dependencies": {
-    "@bunchtogether/braid-messagepack": "1.2.2",
+    "@bunchtogether/braid-messagepack": "1.2.3",
     "isomorphic-ws": "^4.0.1",
     "observed-remove": "^2.2.27",
     "p-queue": "^6.6.2"

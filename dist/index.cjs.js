@@ -17,8 +17,6 @@ var _braidMessagepack = require("@bunchtogether/braid-messagepack");
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
-
 // Overwrite local setTimeout for debugging purposes
 // const oldSetTimeout = setTimeout;
 // setTimeout = (f, d) => {
@@ -1419,12 +1417,10 @@ class Client extends _events.default {
     this.ws.send((0, _braidMessagepack.encode)(new _braidMessagepack.Unpublish(name)));
   }
 
+  static ConnectionError;
 }
 
 exports.default = Client;
-
-_defineProperty(Client, "ConnectionError", void 0);
-
 Client.ConnectionError = ConnectionError;
 
 //# sourceMappingURL=index.cjs.js.map
