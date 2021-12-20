@@ -210,6 +210,7 @@ class Client extends _events.default {
     this.publishRequestPromises = new Map();
     this.setReconnectHandler(() => true);
     this.logger = baseLogger;
+    this.initialized = false;
     this.credentialQueue.once('active', () => {
       this.credentialQueue.on('idle', () => {
         this.logger.info('Credentials queue is idle, sending requests');
@@ -337,6 +338,7 @@ class Client extends _events.default {
     };
 
     ws.onclose = event => {
+      this.initialized = false;
       clearInterval(heartbeatInterval);
       clearInterval(flushInterval);
       const {
@@ -485,6 +487,9 @@ class Client extends _events.default {
     } else {
       await this.sendRequests();
     }
+
+    this.emit('initialized');
+    this.initialized = true;
   }
 
   async sendRequests() {
