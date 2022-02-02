@@ -3,7 +3,7 @@
 import EventEmitter from 'events';
 import IsomorphicWebSocket from 'isomorphic-ws';
 import PQueue from 'p-queue';
-import ObservedRemoveMap from 'observed-remove/dist/map';
+import ObservedRemoveMap from 'observed-remove/dist/esm/map';
 
 import {
   encode,
@@ -448,7 +448,7 @@ export default class Client extends EventEmitter {
     } else {
       await this.sendRequests();
     }
-    
+
     this.emit('initialized');
     this.initialized = true;
   }
