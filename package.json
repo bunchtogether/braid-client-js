@@ -1,6 +1,6 @@
 {
   "name": "@bunchtogether/braid-client",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
   "exports": {
@@ -29,12 +29,15 @@
     "collectCoverageFrom": [
       "src/*.js",
       "src/**/*.js"
-    ]
+    ],
+    "moduleNameMapper": {
+      "observed-remove/map": "<rootDir>/node_modules/observed-remove/dist/cjs/map.js"
+    }
   },
   "devDependencies": {
-    "@babel/cli": "^7.16.8",
-    "@babel/core": "^7.16.12",
-    "@babel/eslint-parser": "^7.16.5",
+    "@babel/cli": "^7.17.0",
+    "@babel/core": "^7.17.0",
+    "@babel/eslint-parser": "^7.17.0",
     "@babel/plugin-proposal-class-properties": "^7.16.7",
     "@babel/plugin-transform-flow-strip-types": "^7.16.7",
     "@babel/preset-env": "^7.16.11",
@@ -50,16 +53,16 @@
     "eslint-plugin-jsx-a11y": "^6.5.1",
     "eslint-plugin-react": "^7.28.0",
     "expect": "^27.4.6",
-    "flow-bin": "^0.170.0",
+    "flow-bin": "^0.171.0",
     "flow-typed": "^3.6.1",
     "husky": "^7.0.4",
     "jest": "^27.4.7",
     "jest-diff": "^27.4.6"
   },
   "dependencies": {
-    "@bunchtogether/braid-messagepack": "1.2.11",
+    "@bunchtogether/braid-messagepack": "1.2.13",
     "isomorphic-ws": "^4.0.1",
-    "observed-remove": "^2.3.0",
+    "observed-remove": "^2.3.1",
     "p-queue": "^7.2.0"
   }
 }

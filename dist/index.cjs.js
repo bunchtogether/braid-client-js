@@ -11,7 +11,7 @@ var _isomorphicWs = _interopRequireDefault(require("isomorphic-ws"));
 
 var _pQueue = _interopRequireDefault(require("p-queue"));
 
-var _map = _interopRequireDefault(require("observed-remove/dist/esm/map"));
+var _map = _interopRequireDefault(require("observed-remove/map"));
 
 var _braidMessagepack = require("@bunchtogether/braid-messagepack");
 

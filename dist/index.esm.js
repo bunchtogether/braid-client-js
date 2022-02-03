@@ -1,7 +1,7 @@
 import EventEmitter from 'events';
 import IsomorphicWebSocket from 'isomorphic-ws';
 import PQueue from 'p-queue';
-import ObservedRemoveMap from 'observed-remove/dist/esm/map';
+import ObservedRemoveMap from 'observed-remove/map';
 import { encode, decode, Credentials, CredentialsResponse, DataDump, SubscribeRequest, SubscribeResponse, Unsubscribe, EventSubscribeRequest, EventSubscribeResponse, EventUnsubscribe, BraidEvent, PublishRequest, PublishResponse, PublisherMessage, Unpublish } from '@bunchtogether/braid-messagepack'; // Overwrite local setTimeout for debugging purposes
 // const oldSetTimeout = setTimeout;
 // setTimeout = (f, d) => {
